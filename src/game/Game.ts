@@ -129,6 +129,17 @@ export class Game {
       this.hud.loading(100, 'A kingdom is waiting.');
       await this.paint();
       this.changeState(GameState.MENU);
+      if (
+        (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV &&
+        new URLSearchParams(location.search).get('chapter') === 'fields'
+      ) {
+        await this.enterFields();
+        const inspect = new URLSearchParams(location.search).get('view');
+        if (inspect === 'village') this.player.reset(-18, 16);
+        if (inspect === 'ruins') this.player.reset(-25, -20);
+        if (inspect === 'pond') this.player.reset(21, -18);
+        this.camera.snap(this.player.position);
+      }
       this.lastTime = performance.now();
       requestAnimationFrame(this.tick);
     } catch (error) {
@@ -203,14 +214,13 @@ export class Game {
         await this.paint();
       });
       this.scene.add(this.fields.group);
-      this.effects = new Effects(true);
+      this.effects = new Effects(true, this.collision.heightAt);
       this.scene.add(this.effects.group);
       this.lighting = new FieldLighting(this.scene);
       this.hud.loading(73, 'Waking the last machine in a new world…');
       await this.paint();
       this.player = new Player(this.collision, this.effects, this.audio);
-      this.player.reset(FIELD_SPAWN.z);
-      this.player.position.x = FIELD_SPAWN.x;
+      this.player.reset(FIELD_SPAWN.z, FIELD_SPAWN.x);
       this.scene.add(this.player.model.group);
       for (const spawn of FIELD_ENCOUNTERS) {
         const enemy = new Enemy(
@@ -221,6 +231,7 @@ export class Game {
           this.collision,
           this.effects,
           this.audio,
+          this.fields.assets.clone(spawn.type),
         );
         this.enemies.push(enemy);
         this.scene.add(enemy.model.group);
@@ -395,8 +406,7 @@ export class Game {
     void this.audio.start();
     if (this.chapter === 'fields') {
       const spawn = this.villageFound ? FIELD_CHECKPOINT : FIELD_SPAWN;
-      this.player.reset(spawn.z);
-      this.player.position.x = spawn.x;
+      this.player.reset(spawn.z, spawn.x);
       for (const enemy of this.enemies) if (enemy.health > 0) enemy.reset();
       this.camera.snap(this.player.position);
       this.lastHealth = 100;
@@ -509,6 +519,7 @@ export class Game {
   private updateGameplay(dt: number) {
     this.mouse.set(this.input.mouse.x, this.input.mouse.y);
     this.raycaster.setFromCamera(this.mouse, this.camera.camera);
+    this.ground.constant = -this.player.position.y;
     const aim = this.input.mouse.active
       ? this.raycaster.ray.intersectPlane(this.ground, this.aim)
       : null;

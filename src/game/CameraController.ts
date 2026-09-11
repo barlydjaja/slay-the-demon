@@ -15,11 +15,11 @@ export class CameraController {
   }
   update(dt: number, time: number, player: THREE.Vector3, menu: boolean, boss: boolean) {
     this.desired.copy(player);
-    this.desired.y = 0.55;
+    this.desired.y = player.y + 0.55;
     if (menu) {
       this.desired.x -= 6.7;
       this.desired.z -= 4;
-      this.desired.y = 0.8;
+      this.desired.y = player.y + 0.8;
     } else this.desired.z -= 2.2;
     this.target.lerp(this.desired, 1 - Math.exp(-dt * (menu ? 2.3 : 5)));
     this.zoom = damp(this.zoom, boss ? 1.23 : menu ? 1.05 : 1, 2, dt);

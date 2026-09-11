@@ -37,6 +37,7 @@ export class Enemy {
     private collision: CollisionSystem,
     private effects: Effects,
     private audio: AudioManager,
+    fieldTemplate?: THREE.Group,
   ) {
     this.profile = ENEMY_PROFILES[type];
     this.model =
@@ -44,8 +45,8 @@ export class Enemy {
         ? new ArmorModel()
         : type === 'spider'
           ? new SpiderModel()
-          : new FieldCreatureModel(type);
-    this.model.group.position.set(x, 0, z);
+          : new FieldCreatureModel(type, fieldTemplate);
+    this.model.group.position.set(x, this.collision.heightAt(x, z), z);
     this.origin.copy(this.model.group.position);
     this.maxHealth = this.health = this.profile.health;
     this.phase = x * 7 + z;
@@ -72,7 +73,9 @@ export class Enemy {
       this.deadTime += dt;
       this.model.animate(time, false, 0, 0, this.deadTime);
       if (this.deadTime > 1.5)
-        this.model.group.position.y = -Math.min(2, (this.deadTime - 1.5) * 0.8);
+        this.model.group.position.y =
+          this.collision.heightAt(this.position.x, this.position.z) -
+          Math.min(2, (this.deadTime - 1.5) * 0.8);
       if (this.deadTime > 4) this.model.group.visible = false;
       return;
     }

@@ -13,6 +13,7 @@ export interface Position {
 }
 /** Axis-separated circle/AABB resolution allows sliding along masonry. */
 export class CollisionSystem {
+  heightAt: (x: number, z: number) => number = () => 0;
   constructor(public bounds: { halfWidth: number; minZ: number; maxZ: number } = WORLD) {}
   obstacles: Obstacle[] = [];
   add(x: number, z: number, width: number, depth: number) {
@@ -48,5 +49,7 @@ export class CollisionSystem {
       if (!this.blocked(position.x + dx / steps, position.z, radius)) position.x += dx / steps;
       if (!this.blocked(position.x, position.z + dz / steps, radius)) position.z += dz / steps;
     }
+    if ('y' in position)
+      (position as Position & { y: number }).y = this.heightAt(position.x, position.z);
   }
 }

@@ -157,8 +157,8 @@ export class Player {
     this.collision.move(this.position, (dx / len) * 0.5, (dz / len) * 0.5, PLAYER.radius);
     return 'hurt';
   }
-  reset(z = 11) {
-    this.position.set(0, 0, z);
+  reset(z = 11, x = 0) {
+    this.position.set(x, this.collision.heightAt(x, z), z);
     this.health = 100;
     this.stamina = 100;
     this.deadTime = 0;

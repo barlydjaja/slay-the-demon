@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
+import { readFile } from 'node:fs/promises';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FieldAssets } from '../src/world/FieldAssets';
 import { Greenfields } from '../src/world/Greenfields';
 import { Castle } from '../src/world/Castle';
 import { CollisionSystem } from '../src/game/CollisionSystem';
@@ -38,6 +41,16 @@ Object.assign(globalThis, {
   },
   window: { innerWidth: 1280, innerHeight: 800, devicePixelRatio: 1 },
 });
+
+async function testAssets() {
+  const data = await readFile(new URL('../public/models/greenfields-kit.glb', import.meta.url));
+  const gltf = await new GLTFLoader().parseAsync(
+    data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+    '',
+  );
+  return new FieldAssets(gltf.scene);
+}
+FieldAssets.load = testAssets;
 
 function flood(c: CollisionSystem, start: { x: number; z: number }) {
   const minX = -c.bounds.halfWidth,
@@ -127,11 +140,11 @@ test('the meadow entrance, elder, well, checkpoint and every monster are reachab
   disposeScene(scene);
 });
 
-test('wolves cancel an imminent attack and retreat when the player reaches Firstlight', () => {
+test('wolves cancel an imminent attack and retreat when the player reaches Firstlight', async () => {
   const c = new CollisionSystem(FIELD_BOUNDS),
     effects = new Effects(true),
     audio = new AudioManager();
-  const enemy = new Enemy('wolf', 5, 2, -18, c, effects, audio);
+  const enemy = new Enemy('wolf', 5, 2, -18, c, effects, audio, (await testAssets()).clone('wolf'));
   const player = new Player(c, effects, audio);
   player.position.set(2.2, 0, -18);
   assert.ok(isFieldSanctuary(player.position.x, player.position.z));
@@ -144,7 +157,7 @@ test('wolves cancel an imminent attack and retreat when the player reaches First
   assert.ok(enemy.position.x < 3);
 });
 
-test('field enemies retain distinct combat timing and deaths cannot award healing twice', () => {
+test('field enemies retain distinct combat timing and deaths cannot award healing twice', async () => {
   const c = new CollisionSystem(FIELD_BOUNDS),
     effects = new Effects(true),
     audio = new AudioManager();
@@ -153,7 +166,16 @@ test('field enemies retain distinct combat timing and deaths cannot award healin
   player.facing = 0;
   player.hitWindow = true;
   player.health = 50;
-  const enemy = new Enemy('thornling', 5, 0, 1.6, c, effects, audio);
+  const enemy = new Enemy(
+    'thornling',
+    5,
+    0,
+    1.6,
+    c,
+    effects,
+    audio,
+    (await testAssets()).clone('thornling'),
+  );
   assert.ok(ENEMY_PROFILES.wolf.speed > ENEMY_PROFILES.golem.speed);
   assert.ok(ENEMY_PROFILES.golem.windup > ENEMY_PROFILES.wolf.windup);
   assert.ok(enemy.tryHit(player));

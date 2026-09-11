@@ -25,7 +25,10 @@ export class Effects {
   private ripples: { mesh: THREE.Mesh; life: number; duration: number; size: number }[] = [];
   private drops: THREE.Points;
   private dropPositions: Float32Array;
-  constructor(private outdoors = false) {
+  constructor(
+    private outdoors = false,
+    private heightAt: (x: number, z: number) => number = () => 0,
+  ) {
     this.mesh = new THREE.InstancedMesh(
       new THREE.SphereGeometry(1, 4, 3),
       new THREE.MeshBasicMaterial({
@@ -100,7 +103,7 @@ export class Effects {
     for (let i = 0; i < count; i++) {
       const p = this.particles[this.next++ % this.limit];
       p.x = x;
-      p.y = y;
+      p.y = y + this.heightAt(x, z);
       p.z = z;
       p.vx = (Math.random() - 0.5) * force;
       p.vy = 1 + Math.random() * force;
@@ -134,7 +137,7 @@ export class Effects {
         p.y += p.vy * dt;
         p.z += p.vz * dt;
         p.vy -= 9 * dt;
-        this.dummy.position.set(p.x, Math.max(0.04, p.y), p.z);
+        this.dummy.position.set(p.x, Math.max(this.heightAt(p.x, p.z) + 0.04, p.y), p.z);
         this.dummy.scale.setScalar((p.size * p.life) / p.maxLife);
         this.color.copy(p.color).multiplyScalar(Math.min(1, p.life * 5));
         this.mesh.setColorAt(i, this.color);
