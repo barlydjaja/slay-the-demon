@@ -42,6 +42,7 @@ export class Game {
   private hud: HUD;
   private castle?: Castle;
   private fields?: Greenfields;
+  private fieldsModule?: Promise<typeof import('../world/Greenfields')>;
   private chapter: 'castle' | 'fields' = 'castle';
   private bossDefeated = false;
   private storyRead = false;
@@ -164,11 +165,19 @@ export class Game {
       this.camera.shake = blocked ? 0.25 : 0.7;
     };
     boss.onDeath = () => {
+      // Fetch the next map while the gate opens, before the player reaches it.
+      void this.loadFieldsModule().catch(() => {});
       this.changeState(GameState.BOSS_DEAD);
       this.camera.shake = 1;
       this.arenaSeal.active = false;
       this.effects.burst(boss.position.x, 3, boss.position.z, 0xd6b7c8, 60, 7);
     };
+  }
+  private loadFieldsModule() {
+    return (this.fieldsModule ??= import('../world/Greenfields').catch((error) => {
+      this.fieldsModule = undefined;
+      throw error;
+    }));
   }
   private async enterFields() {
     if (this.state === GameState.TRANSITION || this.chapter === 'fields') return;
@@ -186,15 +195,18 @@ export class Game {
       this.enemies = [];
       this.scene = new THREE.Scene();
       this.collision = new CollisionSystem(FIELD_BOUNDS);
-      this.hud.loading(28, 'The old stones give way to green…');
+      this.hud.loading(28, 'Opening the Greenfields…');
       await this.paint();
-      const { Greenfields } = await import('../world/Greenfields');
-      this.fields = new Greenfields(this.collision);
+      const { Greenfields } = await this.loadFieldsModule();
+      this.fields = await Greenfields.create(this.collision, async (progress, label) => {
+        this.hud.loading(progress, label);
+        await this.paint();
+      });
       this.scene.add(this.fields.group);
       this.effects = new Effects(true);
       this.scene.add(this.effects.group);
       this.lighting = new FieldLighting(this.scene);
-      this.hud.loading(60, 'A village remembers the light…');
+      this.hud.loading(73, 'Waking the last machine in a new world…');
       await this.paint();
       this.player = new Player(this.collision, this.effects, this.audio);
       this.player.reset(FIELD_SPAWN.z);
@@ -212,6 +224,13 @@ export class Game {
         );
         this.enemies.push(enemy);
         this.scene.add(enemy.model.group);
+        if (this.enemies.length % 3 === 0) {
+          this.hud.loading(
+            78 + (this.enemies.length / FIELD_ENCOUNTERS.length) * 10,
+            'Waking the creatures of the meadow…',
+          );
+          await this.paint();
+        }
       }
       this.chapter = 'fields';
       this.lastHealth = 100;
@@ -221,7 +240,7 @@ export class Game {
       this.fields.update(this.time);
       this.hud.chapter(true);
       this.applySettings(this.hud.settings);
-      this.hud.loading(86, 'Someone has been waiting for you…');
+      this.hud.loading(92, 'Preparing sunlight and shadows…');
       await this.paint();
       await this.renderer.compileAsync(this.scene, this.camera.camera);
       this.hud.loading(100, 'Chapter II · A new beginning');
@@ -268,7 +287,11 @@ export class Game {
     this.renderer.domElement.focus();
   }
   private paint() {
-    return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    // A single rAF resumes before paint and can leave the previous percentage
+    // onscreen throughout expensive work. Let that frame paint before continuing.
+    return new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
   }
   private async createRenderer() {
     if ('gpu' in navigator) {

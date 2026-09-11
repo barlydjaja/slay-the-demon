@@ -23,18 +23,38 @@ export class Greenfields {
   private marker = new THREE.Group();
   private blades = new THREE.Group();
   private villagers: { group: THREE.Group; x: number; z: number; phase: number }[] = [];
-  private motes: THREE.Points;
-  constructor(private collision: CollisionSystem) {
+  private motes!: THREE.Points;
+  private constructor(private collision: CollisionSystem) {
     this.group.name = 'Chapter II — The Greenfields';
     this.group.add(this.static);
-    this.ground();
-    this.path();
-    this.surroundings();
-    this.village();
+  }
+  static async create(
+    collision: CollisionSystem,
+    report: (progress: number, label: string) => Promise<void>,
+  ) {
+    const field = new Greenfields(collision);
+    const stages: [number, string, () => void][] = [
+      [31, 'Shaping the green hills…', () => field.ground()],
+      [35, 'Finding the path beyond the gate…', () => field.path()],
+      [39, 'Growing the trees along the meadow…', () => field.surroundings()],
+      [44, 'Building Firstlight Village…', () => field.village()],
+      [50, 'Elder Rowan is waiting beneath the tree…', () => field.makeElder()],
+      [54, 'Scattering grass and wildflowers…', () => field.grass()],
+      [61, 'Letting a little light into the fields…', () => field.makeMotes()],
+      [65, 'Bringing the meadow together…', () => field.batchStatic()],
+    ];
+    for (const [progress, label, build] of stages) {
+      // The caller yields a painted frame before each batch of scene construction.
+      await report(progress, label);
+      build();
+    }
+    return field;
+  }
+  private makeElder() {
     this.elder = this.person(0x587e87, true);
     this.elder.position.set(ELDER_POSITION.x, 0, ELDER_POSITION.z);
     this.group.add(this.elder);
-    collision.add(ELDER_POSITION.x, ELDER_POSITION.z, 0.8, 0.8);
+    this.collision.add(ELDER_POSITION.x, ELDER_POSITION.z, 0.8, 0.8);
     this.tree(-7, 25, 1.6);
     this.marker.position.set(ELDER_POSITION.x, 3.35, ELDER_POSITION.z);
     const light = new THREE.MeshBasicMaterial({ color: 0xffe1a1 });
@@ -44,7 +64,8 @@ export class Greenfields {
     const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), light);
     this.marker.add(gem);
     this.group.add(this.marker);
-    this.grass();
+  }
+  private makeMotes() {
     const points = new Float32Array(100 * 3);
     for (let i = 0; i < points.length; i += 3) {
       points[i] = (this.rng() - 0.5) * 75;
@@ -64,7 +85,6 @@ export class Greenfields {
       }),
     );
     this.group.add(this.motes);
-    this.batchStatic();
   }
   private ground() {
     const geo = new THREE.PlaneGeometry(210, 210, 70, 70);

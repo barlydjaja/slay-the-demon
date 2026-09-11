@@ -95,9 +95,9 @@ test('boss exit remains sealed until its opening animation clears the doorway, a
   assert.ok(c.blocked(0, -150, 0.47));
 });
 
-test('the meadow entrance, elder, well, checkpoint and every monster are reachable', () => {
+test('the meadow entrance, elder, well, checkpoint and every monster are reachable', async () => {
   const c = new CollisionSystem(FIELD_BOUNDS),
-    field = new Greenfields(c);
+    field = await Greenfields.create(c, async () => {});
   const reachable = flood(c, FIELD_SPAWN);
   for (const p of [
     FIELD_SPAWN,
@@ -188,6 +188,7 @@ test('map cleanup disposes shared geometry, materials and textures once', () => 
 function gameHarness() {
   const game = Object.create(Game.prototype) as any;
   const messages: string[] = [];
+  const loadingProgress: number[] = [];
   const oldScene = new THREE.Scene();
   oldScene.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()));
   Object.assign(game, {
@@ -210,7 +211,9 @@ function gameHarness() {
     },
     hud: {
       setState() {},
-      loading() {},
+      loading(progress: number) {
+        loadingProgress.push(progress);
+      },
       chapter() {},
       location() {},
       objective() {},
@@ -228,11 +231,11 @@ function gameHarness() {
     },
     paint: async () => {},
   });
-  return { game, oldScene, messages };
+  return { game, oldScene, messages, loadingProgress };
 }
 
 test('chapter loading releases the castle and builds exactly one field map on repeated triggers', async () => {
-  const { game, oldScene } = gameHarness();
+  const { game, oldScene, loadingProgress } = gameHarness();
   const first = game.enterFields();
   assert.equal(game.state, GameState.TRANSITION);
   assert.equal(game.input.enabled, false);
@@ -241,6 +244,12 @@ test('chapter loading releases the castle and builds exactly one field map on re
   assert.equal(oldScene.children.length, 0);
   assert.equal(game.chapter, 'fields');
   assert.equal(game.state, GameState.PLAYING);
+  assert.ok(loadingProgress.length >= 14);
+  assert.deepEqual(
+    loadingProgress,
+    [...loadingProgress].sort((a, b) => a - b),
+  );
+  assert.equal(loadingProgress.at(-1), 100);
   assert.equal(game.castle, undefined);
   assert.equal(game.boss, undefined);
   assert.equal(game.reflection, undefined);

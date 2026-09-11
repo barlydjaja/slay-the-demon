@@ -21,6 +21,8 @@ export class HUD {
   private memoryTimer = 0;
   private areaTimer = 0;
   private currentState = GameState.LOADING;
+  private loadingStarted = 0;
+  private loadingTimer: ReturnType<typeof setInterval> | undefined;
   constructor(private actions: UIActions) {
     try {
       const stored = JSON.parse(localStorage.getItem('last-hope-settings') || '{}');
@@ -30,7 +32,7 @@ export class HUD {
     } catch {}
     this.root.innerHTML = `
       <div class="vignette"></div><div class="screen-grain"></div><div class="frame"><i></i><i></i><i></i><i></i></div>
-      <section id="loading" class="loading"><div class="loading-seal">${crest}</div><p class="eyebrow">A FORGOTTEN KINGDOM</p><h1>THE LAST HOPE</h1><p id="load-label">Waking a forgotten machine…</p><div class="loading-track"><span id="load-progress"></span></div><small id="load-percent">0%</small></section>
+      <section id="loading" class="loading" aria-labelledby="load-title" aria-busy="true"><div class="loading-emblem"><div class="loading-orbit" aria-hidden="true"></div><div class="loading-seal">${crest}</div></div><p id="load-chapter" class="eyebrow">A FORGOTTEN KINGDOM</p><h1 id="load-title">THE LAST HOPE</h1><p id="load-label" role="status" aria-live="polite">Waking a forgotten machine…</p><div id="load-track" class="loading-track" role="progressbar" aria-label="Journey preparation" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="load-progress"></span></div><div class="loading-meta"><small id="load-percent">0%</small><span id="load-elapsed">0s elapsed</span></div><div class="loading-activity"><span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="load-activity">Preparing your journey</span></div><p id="load-reassurance" class="loading-reassurance">The next scene will open automatically when it is ready.</p></section>
       <header id="masthead" class="masthead hidden"><div class="brand">${crest}<span>THE LAST HOPE</span></div><div class="edition">AN INTERACTIVE TALE <span>VOL. 01</span></div></header>
       <section id="menu" class="title-menu hidden"><p class="eyebrow"><span></span> IN THE SHADOW OF A FALLEN KINGDOM</p><h1><span>THE LAST</span><strong>HOPE</strong></h1><div class="title-rule"><i></i><b>✧</b><i></i></div><p class="tagline">A castle forgotten.<br>A demon awakened.<br><em>One machine remains.</em></p><div class="menu-buttons"><button id="play" class="play-button"><span class="button-glyph">⟡</span><span>BEGIN JOURNEY</span><span class="button-arrow">→</span></button><div class="secondary-buttons"><button id="menu-settings">SETTINGS</button><span>·</span><button id="credits-button">CREDITS</button></div></div><p class="save-note">A SHORT TALE OF COURAGE &amp; WHAT REMAINS</p></section>
       <div id="scene-caption" class="scene-caption hidden"><span class="tiny-diamond"></span><div>THE FORGOTTEN GATE<small>AFTER THE RAIN, ONLY SILENCE.</small></div></div>
@@ -147,6 +149,12 @@ export class HUD {
   }
   setState(state: GameState) {
     this.currentState = state;
+    const loading = state === GameState.LOADING || state === GameState.TRANSITION;
+    if (loading) {
+      this.beginLoading();
+      this.el('load-chapter').textContent =
+        state === GameState.TRANSITION ? 'CHAPTER II · THE GREENFIELDS' : 'A FORGOTTEN KINGDOM';
+    } else this.endLoading();
     for (const id of [
       'loading',
       'menu',
@@ -192,10 +200,45 @@ export class HUD {
       this.hide('area-reveal');
     }
   }
+  private beginLoading() {
+    if (this.loadingTimer !== undefined) return;
+    this.loadingStarted = performance.now();
+    this.el('loading').classList.add('is-loading');
+    this.el('loading').setAttribute('aria-busy', 'true');
+    this.el('load-elapsed').classList.remove('hidden');
+    this.updateLoadingFeedback();
+    // The loading screen also runs before the game animation loop is started.
+    this.loadingTimer = setInterval(() => this.updateLoadingFeedback(), 1000);
+  }
+  private endLoading() {
+    if (this.loadingTimer !== undefined) clearInterval(this.loadingTimer);
+    this.loadingTimer = undefined;
+    this.el('loading').classList.remove('is-loading');
+    this.el('loading').setAttribute('aria-busy', 'false');
+  }
+  private updateLoadingFeedback() {
+    const elapsed = Math.floor((performance.now() - this.loadingStarted) / 1000);
+    this.el('load-elapsed').textContent = `${elapsed}s elapsed`;
+    this.el('load-activity').textContent =
+      elapsed >= 12 ? 'Still preparing your journey' : 'Preparing your journey';
+    this.el('load-reassurance').textContent =
+      elapsed >= 30
+        ? 'This is taking longer than usual. You can keep waiting; the scene will open when ready.'
+        : elapsed >= 12
+          ? 'Larger scenes can take a little longer. The next scene will open automatically.'
+          : 'The next scene will open automatically when it is ready.';
+  }
   loading(progress: number, label: string) {
+    this.beginLoading();
+    progress = Math.max(0, Math.min(100, progress));
     this.el('load-label').textContent = label;
     this.el('load-progress').style.width = progress + '%';
     this.el('load-percent').textContent = Math.round(progress) + '%';
+    this.el('load-track').setAttribute('aria-valuenow', String(Math.round(progress)));
+    if (progress === 100) {
+      this.endLoading();
+      this.el('load-reassurance').textContent = 'Your journey is ready.';
+    }
   }
   health(health: number, stamina: number, blocking: boolean) {
     this.el('health-fill').style.width = health + '%';
@@ -294,6 +337,9 @@ export class HUD {
   }
   error(message: string) {
     this.setState(GameState.LOADING);
+    this.endLoading();
+    this.el('load-elapsed').classList.add('hidden');
+    this.el('load-reassurance').textContent = 'Loading stopped. Reload the game to try again.';
     this.el('load-label').textContent = message;
     this.el('load-percent').textContent = 'Please reload to try again.';
   }
