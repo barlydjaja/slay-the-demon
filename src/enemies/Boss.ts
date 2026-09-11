@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { SpiderModel } from './CreatureModels';
 import { BOSS, BOSS_AGGRO_DISTANCE, PLAYER } from '../game/config';
 import { CollisionSystem } from '../game/CollisionSystem';
-import { Effects, CharacterReflection } from '../world/Effects';
+import { Effects } from '../world/Effects';
 import { Player } from '../player/Player';
 import { AudioManager } from '../audio/AudioManager';
 import { angleDamp, clamp, inAttackArc } from '../game/math';
@@ -22,7 +22,6 @@ export class Boss {
   attackIndex = 0;
   deadTime = 0;
   lastHit = -1;
-  reflection: CharacterReflection;
   telegraphs = new THREE.Group();
   private indicators = new Map<AttackKind, THREE.Group>();
   private damageDone = false;
@@ -74,7 +73,6 @@ export class Boss {
       this.telegraphs.add(group);
     }
     this.telegraphs.position.y = 0.075;
-    this.reflection = new CharacterReflection(this.model.group, 0x72829e, 0.12);
   }
   get position() {
     return this.model.group.position;
@@ -104,7 +102,6 @@ export class Boss {
       this.deadTime += dt;
       this.model.animate(time, false, 0, 0, this.deadTime * 0.5);
       this.telegraphs.visible = false;
-      this.reflection.update(this.position.x, this.position.z, this.deadTime < 4);
       return;
     }
     if (this.state === 'idle') {
@@ -227,7 +224,6 @@ export class Boss {
         );
       }
     }
-    this.reflection.update(this.position.x, this.position.z);
     // Physical body separation keeps the robot outside the spider abdomen.
     if (distance < 2.25 && distance > 0.01 && this.active) {
       this.collision.move(

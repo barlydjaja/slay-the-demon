@@ -6,7 +6,8 @@ import { CollisionSystem } from './CollisionSystem';
 import { InputManager } from './InputManager';
 import { CameraController } from './CameraController';
 import { Castle } from '../world/Castle';
-import { Effects, CharacterReflection } from '../world/Effects';
+import { Effects } from '../world/Effects';
+import { WaterReflection } from '../world/WaterReflection';
 import { Lighting } from '../world/Lighting';
 import { Player } from '../player/Player';
 import { Enemy } from '../enemies/Enemy';
@@ -30,7 +31,7 @@ export class Game {
   private player!: Player;
   private enemies: Enemy[] = [];
   private boss!: Boss;
-  private reflection!: CharacterReflection;
+  private reflection!: WaterReflection;
   private arenaSeal = this.collision.add(0, -115, 8.8, 1);
   private checkpoint = false;
   private areaIndex = -1;
@@ -100,11 +101,11 @@ export class Game {
       this.player = new Player(this.collision, this.effects, this.audio);
       this.scene.add(this.player.model.group);
       this.player.model.group.rotation.y = 0.3;
-      this.reflection = new CharacterReflection(this.player.model.group, 0x83bfd4, 0.18);
-      this.scene.add(this.reflection.group);
       this.spawnEnemies();
       this.boss = new Boss(this.collision, this.effects, this.audio);
-      this.scene.add(this.boss.model.group, this.boss.telegraphs, this.boss.reflection.group);
+      this.scene.add(this.boss.model.group, this.boss.telegraphs);
+      this.reflection = await WaterReflection.create(this.renderer, this.castle.water);
+      this.scene.add(this.reflection.surface);
       this.boss.onAggro = () => {
         this.changeState(GameState.BOSS_COMBAT);
         this.arenaSeal.active = true;
@@ -302,13 +303,6 @@ export class Game {
       if (this.lighting.lightning) this.audio.play('thunder');
       this.audio.update(dt);
     }
-    this.reflection.update(
-      this.player.position.x,
-      this.player.position.z,
-      this.hud.settings.reflections !== 'low' && this.player.health > 0,
-    );
-    this.boss.reflection.group.visible =
-      this.hud.settings.reflections !== 'low' && this.boss.deadTime < 4;
     this.camera.update(
       dt,
       this.time,
@@ -318,6 +312,7 @@ export class Game {
     );
     this.hud.update(dt);
     this.input.endFrame();
+    this.reflection.update(this.time, this.renderer);
     this.renderer.render(this.scene, this.camera.camera);
     this.updateTelemetry(dt, rawDt);
     requestAnimationFrame(this.tick);
@@ -415,6 +410,7 @@ export class Game {
       }
     }
     this.castle?.setReflections(settings.reflections);
+    this.reflection?.setQuality(settings.reflections);
     this.effects?.setQuality(settings.particles);
     this.audio.setMuted(!settings.audio);
     if (settings.audio && this.state !== GameState.LOADING) void this.audio.start();

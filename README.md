@@ -39,7 +39,7 @@ The boss bar appears when the Reaper wakes. Amber and crimson floor tells show i
 - `src/game`: state orchestration, configuration, input, camera, and substepped circle/AABB collisions.
 - `src/player`: robot geometry, procedural animation, movement, guard, attacks, and health.
 - `src/enemies`: armor/spider state machines, the Reaper model, four boss attacks, and encounter lifecycle.
-- `src/world`: five connected dioramas, material textures, lighting, particle pools, reflections, and water effects.
+- `src/world`: five connected dioramas, material textures, lighting, particle pools, a shared planar puddle reflection, and water effects.
 - `src/audio`: original synthesized ambient score, boss score, and combat foley.
 - `src/ui`: loading, title, story, HUD, settings, pause, defeat, and victory screens.
 
@@ -49,7 +49,7 @@ All character and environment assets are original procedural geometry. No extern
 
 WebGPU is attempted first on supported browsers, with Three.js's WebGL 2 backend fallback and a conventional WebGLRenderer fallback if initialization fails. See the [Three.js renderer documentation](https://threejs.org/manual/en/webgpurenderer).
 
-The scene uses instanced stone floors, material-based static geometry merging per area, area and frustum culling, shared primitive geometries, four selected torch lights, one shadow-casting directional light, a boss rim light, and pooled particles and rings. Water combines irregular PBR puddles, a small procedural environment map, and translucent character silhouette projections. Reflections are deliberately stylized approximations, not screen-space or full-scene planar reflections. Fog uses depth fog and inexpensive textured planes. Emissive glows replace an expensive bloom pipeline. Texture atlases, GLTF compression, and compressed audio are unnecessary because those file assets are not used.
+The scene uses instanced stone floors, material-based static geometry merging per area, area and frustum culling, shared primitive geometries, four selected torch lights, one shadow-casting directional light, a boss rim light, and pooled particles and rings. Water combines irregular PBR puddles, a small procedural environment map, and one shared planar reflection of the scene. The reflection camera supplies correct perspective and surface occlusion; puddle geometry masks the result, with a soft shoreline fade, a five-tap blur, and subtle ripple distortion. High/Medium cap the extra render target at 768/384 pixels on its longest side; Low disables that pass. Three.js Reflector handles conventional WebGL and ReflectorNode handles WebGPU and its WebGL backend. Fog uses depth fog and inexpensive textured planes. Emissive glows replace an expensive bloom pipeline. Texture atlases, GLTF compression, and compressed audio are unnecessary because those file assets are not used.
 
 Settings adjust resolution, shadows, reflections, and particles. Sustained slow frames reduce resolution gradually. 1080p/60 FPS is a target, not a measured guarantee: hardware/browser performance and visual output still need an actual browser playtest. Headless tests verify game logic and traversability, not GPU output or encounter difficulty. First-play duration depends on exploration and combat skill.
 
