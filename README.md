@@ -1,6 +1,6 @@
 # The Last Hope
 
-A small blue machine explores a rain-soaked, abandoned kingdom and confronts the Hooded Reaper. A self-contained desktop browser action-adventure built with TypeScript, Three.js, Vite, and Web Audio.
+A small blue machine explores a rain-soaked, abandoned kingdom, defeats the Hooded Reaper, and discovers a living world beyond its gates. A self-contained desktop browser action-adventure built with TypeScript, Three.js, Vite, and Web Audio.
 
 ## Run
 
@@ -19,18 +19,23 @@ npm test          # Headless combat, AI, collision, and level topology tests
 
 ## Controls
 
-| Input             | Action                                     |
-| ----------------- | ------------------------------------------ |
-| WASD / arrow keys | Move relative to the camera                |
-| Mouse             | Aim while attacking or blocking            |
-| Left mouse        | Strike; holding repeats after recovery     |
-| Right mouse       | Hold a frontal guard                       |
-| Shift             | Sprint; consumes stamina                   |
-| Space             | Evade; short invulnerability, stamina cost |
-| Escape            | Pause / resume                             |
-| F3                | Renderer and gameplay diagnostics          |
+| Input             | Action                                      |
+| ----------------- | ------------------------------------------- |
+| WASD / arrow keys | Move relative to the camera                 |
+| Mouse             | Aim while attacking or blocking             |
+| Left mouse        | Strike; holding repeats after recovery      |
+| Right mouse       | Hold a frontal guard                        |
+| Shift             | Sprint; consumes stamina                    |
+| Space             | Evade; short invulnerability, stamina cost  |
+| E                 | Talk, advance dialogue, or rest at the well |
+| Escape            | Pause / resume / leave dialogue             |
+| F3                | Renderer and gameplay diagnostics           |
 
 Defeat each area's guardians to break the next seal. Fallen enemies restore five health. Reaching the sanctuary after the chapel restores health and sets a checkpoint for the current journey. Death before that sanctuary restarts the journey; death afterward lets you retry the boss. Checkpoints are session-local. Only graphics/audio preferences persist on this device.
+
+After the Reaper falls, the gate behind the throne rises and daylight enters the chamber. Walk through it to load **Chapter II: The Greenfields**. The castle and its reflection targets are released before the meadow is built. Elder Rowan greets the robot beneath the tree; use **E** or the Continue button to hear his tale, or Escape to listen later. Follow the sunflowers to **Firstlight Village**, a sanctuary with four cottages, three villagers, a vegetable garden, and a working windmill. Entering the village restores health and establishes the chapter's checkpoint; **E** near the well restores health and stamina again.
+
+Twelve creatures inhabit the meadow: quick briar wolves, thornlings, and durable stone golems with slower, stronger attacks. They retreat when the player enters the village or the elder's clearing. Defeated creatures stay defeated after a retry. Clearing the meadow completes the protection objective and leaves exploration open. Returning to the title preserves this chapter during the current session; **Return to the Greenfields** resumes it. Reloading the browser starts a new journey.
 
 The boss bar appears when the Reaper wakes. Amber and crimson floor tells show incoming attacks. Aim your guard toward the attacker; heavy attacks cause a little damage through a successful block. Evade a committed attack, then strike during recovery. The reaper moves faster below half health.
 
@@ -38,10 +43,10 @@ The boss bar appears when the Reaper wakes. Amber and crimson floor tells show i
 
 - `src/game`: state orchestration, configuration, input, camera, and substepped circle/AABB collisions.
 - `src/player`: robot geometry, procedural animation, movement, guard, attacks, and health.
-- `src/enemies`: armor/spider state machines, the Reaper model, four boss attacks, and encounter lifecycle.
-- `src/world`: five connected dioramas, material textures, lighting, particle pools, a shared planar puddle reflection, and water effects.
+- `src/enemies`: castle guardians, three field creature models and combat profiles, the Reaper, and encounter lifecycle.
+- `src/world`: five connected castle dioramas, a separate meadow/village map, map resource disposal, lighting, particles, and a shared planar puddle reflection.
 - `src/audio`: original synthesized ambient score, boss score, and combat foley.
-- `src/ui`: loading, title, story, HUD, settings, pause, defeat, and victory screens.
+- `src/ui`: chapter loading, title, elder dialogue, HUD, settings, pause, and defeat screens.
 
 All character and environment assets are original procedural geometry. No external asset services, runtime APIs, or backend are required. Cinzel and Inter are bundled locally under their font packages' Open Font Licenses. The initial path loads WebGL and the game; the WebGPU renderer is a separate dynamic chunk, loaded only when the browser exposes WebGPU.
 
@@ -51,7 +56,9 @@ WebGPU is attempted first on supported browsers, with Three.js's WebGL 2 backend
 
 The scene uses instanced stone floors, material-based static geometry merging per area, area and frustum culling, shared primitive geometries, four selected torch lights, one shadow-casting directional light, a boss rim light, and pooled particles and rings. Water combines irregular PBR puddles, a small procedural environment map, and one shared planar reflection of the scene. The reflection camera supplies correct perspective and surface occlusion; puddle geometry masks the result, with a soft shoreline fade, a five-tap blur, and subtle ripple distortion. High/Medium cap the extra render target at 768/384 pixels on its longest side; Low disables that pass. Three.js Reflector handles conventional WebGL and ReflectorNode handles WebGPU and its WebGL backend. Fog uses depth fog and inexpensive textured planes. Emissive glows replace an expensive bloom pipeline. Texture atlases, GLTF compression, and compressed audio are unnecessary because those file assets are not used.
 
-Settings adjust resolution, shadows, reflections, and particles. Sustained slow frames reduce resolution gradually. 1080p/60 FPS is a target, not a measured guarantee: hardware/browser performance and visual output still need an actual browser playtest. Headless tests verify game logic and traversability, not GPU output or encounter difficulty. First-play duration depends on exploration and combat skill.
+The Greenfields map is loaded as a separate code chunk. Its scenery is merged by material into spatial cells, with instanced grass, merged NPC silhouettes, frustum culling, distance-limited enemy updates, and a single shadow-casting sun. It has no castle rain, torch lights, or reflection pass. Map transitions release outgoing geometries, materials, textures, shadow maps, and reflection targets before building the next scene.
+
+Settings adjust resolution, shadows, reflections, and particles. Sustained slow frames reduce resolution gradually. 1080p/60 FPS is a target, not a measured guarantee: hardware/browser performance and visual output still need an actual browser playtest. Headless tests verify combat, traversability, gate opening, map loading and disposal, elder dialogue state, safe-zone retreat, and village retries, not GPU output or encounter difficulty. First-play duration depends on exploration and combat skill.
 
 ## Static deployment
 

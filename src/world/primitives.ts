@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 const geometries = new Map<string, THREE.BufferGeometry>();
+/** Called only after every object in the outgoing map has been released. */
+export function clearPrimitiveCache() {
+  for (const geometry of geometries.values()) geometry.dispose();
+  geometries.clear();
+}
 function cached(key: string, create: () => THREE.BufferGeometry) {
   if (!geometries.has(key)) geometries.set(key, create());
   return geometries.get(key)!;

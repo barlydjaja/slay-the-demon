@@ -14,6 +14,21 @@ import { Enemy } from '../enemies/Enemy';
 import { Boss } from '../enemies/Boss';
 import { AudioManager } from '../audio/AudioManager';
 import { HUD } from '../ui/HUD';
+import type { Greenfields } from '../world/Greenfields';
+import { FieldLighting } from '../world/FieldLighting';
+import { disposeScene } from '../world/disposeScene';
+import { clearPrimitiveCache } from '../world/primitives';
+import {
+  FIELD_BOUNDS,
+  FIELD_SPAWN,
+  FIELD_CHECKPOINT,
+  ELDER_POSITION,
+  ELDER_STORY,
+  FIELD_ENCOUNTERS,
+  VILLAGE,
+  inVillage,
+  canLeaveCastle,
+} from '../world/GreenfieldsConfig';
 
 export class Game {
   state = GameState.LOADING;
@@ -25,13 +40,22 @@ export class Game {
   private camera = new CameraController();
   private input = new InputManager(document.querySelector<HTMLElement>('#game')!);
   private hud: HUD;
-  private castle!: Castle;
+  private castle?: Castle;
+  private fields?: Greenfields;
+  private chapter: 'castle' | 'fields' = 'castle';
+  private bossDefeated = false;
+  private storyRead = false;
+  private elderGreeted = false;
+  private storyPage = 0;
+  private villageFound = false;
+  private fieldArea = '';
+  private allMonstersCleared = false;
   private effects!: Effects;
-  private lighting!: Lighting;
+  private lighting!: Lighting | FieldLighting;
   private player!: Player;
   private enemies: Enemy[] = [];
-  private boss!: Boss;
-  private reflection!: WaterReflection;
+  private boss?: Boss;
+  private reflection?: WaterReflection;
   private arenaSeal = this.collision.add(0, -115, 8.8, 1);
   private checkpoint = false;
   private areaIndex = -1;
@@ -54,6 +78,8 @@ export class Game {
     this.arenaSeal.active = false;
     this.hud = new HUD({
       play: () => this.play(),
+      advance: () => this.advanceStory(),
+      leaveDialogue: () => this.leaveStory(),
       resume: () => this.resume(),
       restart: () => this.restart(),
       quit: () => this.quit(),
@@ -91,42 +117,12 @@ export class Game {
       document.querySelector('#game')!.appendChild(canvas);
       this.hud.loading(24, 'Laying the rain-soaked stone…');
       await this.paint();
-      this.effects = new Effects();
-      this.scene.add(this.effects.group);
-      this.castle = new Castle(this.collision);
-      this.scene.add(this.castle.group);
-      this.lighting = new Lighting(this.scene, this.castle.torches);
-      this.hud.loading(52, 'Waking the last machine…');
-      await this.paint();
-      this.player = new Player(this.collision, this.effects, this.audio);
-      this.scene.add(this.player.model.group);
-      this.player.model.group.rotation.y = 0.3;
-      this.spawnEnemies();
-      this.boss = new Boss(this.collision, this.effects, this.audio);
-      this.scene.add(this.boss.model.group, this.boss.telegraphs);
-      this.reflection = await WaterReflection.create(this.renderer, this.castle.water);
-      this.scene.add(this.reflection.surface);
-      this.boss.onAggro = () => {
-        this.changeState(GameState.BOSS_COMBAT);
-        this.arenaSeal.active = true;
-        this.hud.toast('The last guardian of an empty kingdom.');
-        this.camera.shake = 0.75;
-      };
-      this.boss.onDamage = (blocked) => {
-        this.hud.flash(blocked);
-        this.camera.shake = blocked ? 0.25 : 0.7;
-      };
-      this.boss.onDeath = () => {
-        this.changeState(GameState.BOSS_DEAD);
-        this.camera.shake = 1;
-        this.arenaSeal.active = false;
-        this.effects.burst(this.boss.position.x, 3, this.boss.position.z, 0xd6b7c8, 60, 7);
-      };
+      await this.buildCastle();
       this.applySettings(this.hud.settings);
       this.hud.loading(78, 'Gathering mist and candlelight…');
       await this.paint();
       this.camera.update(1, 0, this.player.position, true, false);
-      this.castle.update(0, 0, this.player.position.z);
+      this.castle!.update(0, 0, this.player.position.z);
       this.lighting.update(0.1, 0, 0, 11, false, false);
       await this.renderer.compileAsync(this.scene, this.camera.camera);
       this.hud.loading(100, 'A kingdom is waiting.');
@@ -140,6 +136,136 @@ export class Game {
         'The kingdom could not awaken. Please enable hardware acceleration and use a browser with WebGL 2 support.',
       );
     }
+  }
+  private async buildCastle() {
+    this.effects = new Effects();
+    this.scene.add(this.effects.group);
+    this.castle = new Castle(this.collision);
+    this.scene.add(this.castle.group);
+    this.lighting = new Lighting(this.scene, this.castle.torches);
+    this.hud.loading(52, 'Waking the last machine…');
+    await this.paint();
+    this.player = new Player(this.collision, this.effects, this.audio);
+    this.scene.add(this.player.model.group);
+    this.player.model.group.rotation.y = 0.3;
+    this.spawnEnemies();
+    const boss = (this.boss = new Boss(this.collision, this.effects, this.audio));
+    this.scene.add(boss.model.group, boss.telegraphs);
+    this.reflection = await WaterReflection.create(this.renderer, this.castle.water);
+    this.scene.add(this.reflection.surface);
+    boss.onAggro = () => {
+      this.changeState(GameState.BOSS_COMBAT);
+      this.arenaSeal.active = true;
+      this.hud.toast('The last guardian of an empty kingdom.');
+      this.camera.shake = 0.75;
+    };
+    boss.onDamage = (blocked) => {
+      this.hud.flash(blocked);
+      this.camera.shake = blocked ? 0.25 : 0.7;
+    };
+    boss.onDeath = () => {
+      this.changeState(GameState.BOSS_DEAD);
+      this.camera.shake = 1;
+      this.arenaSeal.active = false;
+      this.effects.burst(boss.position.x, 3, boss.position.z, 0xd6b7c8, 60, 7);
+    };
+  }
+  private async enterFields() {
+    if (this.state === GameState.TRANSITION || this.chapter === 'fields') return;
+    this.changeState(GameState.TRANSITION);
+    this.hud.loading(6, 'Beyond the hollow kingdom…');
+    this.audio.setBoss(false);
+    try {
+      await this.paint();
+      this.reflection?.dispose();
+      this.reflection = undefined;
+      disposeScene(this.scene);
+      clearPrimitiveCache();
+      this.castle = undefined;
+      this.boss = undefined;
+      this.enemies = [];
+      this.scene = new THREE.Scene();
+      this.collision = new CollisionSystem(FIELD_BOUNDS);
+      this.hud.loading(28, 'The old stones give way to green…');
+      await this.paint();
+      const { Greenfields } = await import('../world/Greenfields');
+      this.fields = new Greenfields(this.collision);
+      this.scene.add(this.fields.group);
+      this.effects = new Effects(true);
+      this.scene.add(this.effects.group);
+      this.lighting = new FieldLighting(this.scene);
+      this.hud.loading(60, 'A village remembers the light…');
+      await this.paint();
+      this.player = new Player(this.collision, this.effects, this.audio);
+      this.player.reset(FIELD_SPAWN.z);
+      this.player.position.x = FIELD_SPAWN.x;
+      this.scene.add(this.player.model.group);
+      for (const spawn of FIELD_ENCOUNTERS) {
+        const enemy = new Enemy(
+          spawn.type,
+          5,
+          spawn.x,
+          spawn.z,
+          this.collision,
+          this.effects,
+          this.audio,
+        );
+        this.enemies.push(enemy);
+        this.scene.add(enemy.model.group);
+      }
+      this.chapter = 'fields';
+      this.lastHealth = 100;
+      this.checkpoint = false;
+      this.camera.snap(this.player.position);
+      this.camera.update(1, this.time, this.player.position, false, false);
+      this.fields.update(this.time);
+      this.hud.chapter(true);
+      this.applySettings(this.hud.settings);
+      this.hud.loading(86, 'Someone has been waiting for you…');
+      await this.paint();
+      await this.renderer.compileAsync(this.scene, this.camera.camera);
+      this.hud.loading(100, 'Chapter II · A new beginning');
+      await this.paint();
+      this.audio.setFields(true);
+      this.audio.play('victory');
+      this.changeState(GameState.PLAYING);
+      this.hud.location('The Greenfields', 'CHAPTER II · A NEW BEGINNING');
+      this.fieldArea = 'fields';
+      this.hud.objective('An old man waits beneath the tree. Approach him.', 'BEYOND THE GATE');
+      this.hud.toast('CHAPTER II · Follow the meadow path.');
+      this.renderer.domElement.focus();
+    } catch (error) {
+      console.error('Could not load the Greenfields', error);
+      // Keep the render loop away from the partially released map.
+      this.state = GameState.TRANSITION;
+      this.hud.error('The Greenfields could not load. Please reload the game to try again.');
+    }
+  }
+  private startStory() {
+    if (this.chapter !== 'fields' || !isGameplay(this.state)) return;
+    this.storyPage = 0;
+    this.elderGreeted = true;
+    this.changeState(GameState.DIALOGUE);
+    this.showStoryPage();
+  }
+  private showStoryPage() {
+    this.hud.dialogue(ELDER_STORY[this.storyPage], this.storyPage, ELDER_STORY.length);
+  }
+  private advanceStory() {
+    if (this.state !== GameState.DIALOGUE) return;
+    this.storyPage++;
+    if (this.storyPage >= ELDER_STORY.length) {
+      this.storyRead = true;
+      this.fields?.setStoryRead(true);
+      this.leaveStory();
+      this.hud.toast('Follow the sunflowers to Firstlight Village.');
+    } else this.showStoryPage();
+  }
+  private leaveStory() {
+    if (this.state !== GameState.DIALOGUE) return;
+    // Leaving early permits free exploration; E reopens the elder's tale.
+    this.changeState(GameState.PLAYING);
+    this.renderer.domElement.focus();
   }
   private paint() {
     return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -200,6 +326,12 @@ export class Game {
     void this.audio
       .start()
       .catch(() => this.hud.toast('Sound is unavailable. The journey can continue.'));
+    if (this.chapter === 'fields') {
+      this.audio.setPaused(false);
+      this.changeState(GameState.PLAYING);
+      this.renderer.domElement.focus();
+      return;
+    }
     this.resetWorld();
     this.changeState(GameState.INTRO);
     this.introTime = 0;
@@ -208,10 +340,11 @@ export class Game {
   private resetWorld() {
     this.checkpoint = false;
     this.areaIndex = -1;
-    this.castle.reset();
+    this.castle?.reset();
+    this.bossDefeated = false;
     for (const enemy of this.enemies) enemy.reset();
     this.player.reset();
-    this.boss.reset();
+    this.boss?.reset();
     this.arenaSeal.active = false;
     this.lastHealth = 100;
     this.camera.snap(this.player.position);
@@ -237,9 +370,25 @@ export class Game {
   }
   private restart() {
     void this.audio.start();
-    if (this.checkpoint) {
+    if (this.chapter === 'fields') {
+      const spawn = this.villageFound ? FIELD_CHECKPOINT : FIELD_SPAWN;
+      this.player.reset(spawn.z);
+      this.player.position.x = spawn.x;
+      for (const enemy of this.enemies) if (enemy.health > 0) enemy.reset();
+      this.camera.snap(this.player.position);
+      this.lastHealth = 100;
+      this.audio.setPaused(false);
+      this.changeState(GameState.PLAYING);
+      this.hud.toast(
+        this.villageFound
+          ? 'FIRSTLIGHT · The village keeps your light safe.'
+          : 'The meadow is waiting.',
+      );
+    } else if (this.checkpoint) {
       this.player.reset(WORLD.checkpointZ);
-      this.boss.reset();
+      this.boss?.reset();
+      this.bossDefeated = false;
+      this.castle?.resetExit();
       this.arenaSeal.active = false;
       this.camera.snap(this.player.position);
       this.lastHealth = 100;
@@ -253,7 +402,9 @@ export class Game {
     this.renderer.domElement.focus();
   }
   private quit() {
-    this.resetWorld();
+    if (this.chapter === 'castle') this.resetWorld();
+    else if (this.player.health <= 0) this.restart();
+    this.audio.setPaused(false);
     this.player.model.group.rotation.y = 0.3;
     this.changeState(GameState.MENU);
   }
@@ -261,15 +412,22 @@ export class Game {
     const rawDt = (now - this.lastTime) / 1000,
       dt = Math.min(0.05, Math.max(0.001, rawDt));
     this.lastTime = now;
+    if (this.state === GameState.TRANSITION) {
+      this.input.endFrame();
+      requestAnimationFrame(this.tick);
+      return;
+    }
     if (this.state !== GameState.PAUSED) this.time += dt;
     if (this.input.consume('F3')) this.debugEnabled = !this.debugEnabled;
     if (this.input.consume('Escape')) {
       if (!this.hud.closeDialog()) {
         if (this.state === GameState.PAUSED) this.resume();
         else if (this.state === GameState.INTRO) this.skipIntro();
+        else if (this.state === GameState.DIALOGUE) this.leaveStory();
         else this.pause();
       }
     }
+    if (this.state === GameState.DIALOGUE && this.input.consume('KeyE')) this.advanceStory();
     const playing = isGameplay(this.state),
       menu = this.state === GameState.MENU;
     if (this.state === GameState.INTRO) {
@@ -282,22 +440,30 @@ export class Game {
       this.player.model.animate(this.time, false, false, 0, false, 0, 0);
     else if (this.state === GameState.PLAYER_DEAD)
       this.player.update(dt, this.time, this.input, null);
-    else if (this.state === GameState.BOSS_DEAD) {
+    else if (this.state === GameState.BOSS_DEAD && this.boss) {
       this.boss.update(dt, this.time, this.player);
       if (this.boss.deadTime > 4) {
+        this.bossDefeated = true;
+        this.castle!.exitOpened = true;
+        this.player.health = 100;
+        this.lastHealth = 100;
+        this.audio.setBoss(false);
         this.audio.play('victory');
-        this.changeState(GameState.VICTORY);
+        this.changeState(GameState.PLAYING);
+        this.hud.toast('THE REAPER HAS FALLEN · The far gate is opening.');
+        this.hud.memory('Beyond the throne, a warm breeze. Beyond the walls… life.');
       }
     }
     if (this.state !== GameState.PAUSED) {
-      this.castle.update(this.time, dt, this.player.position.z);
+      this.fields?.update(this.time);
+      this.castle?.update(this.time, dt, this.player.position.z);
       this.effects.update(dt, this.time, this.player.position.z);
       this.lighting.update(
         dt,
         this.time,
         this.player.position.x,
         this.player.position.z,
-        this.boss.active,
+        this.boss?.active ?? false,
         this.state === GameState.VICTORY || this.state === GameState.BOSS_DEAD,
       );
       if (this.lighting.lightning) this.audio.play('thunder');
@@ -308,11 +474,11 @@ export class Game {
       this.time,
       this.player.position,
       menu || this.state === GameState.INTRO,
-      this.boss.active || this.state === GameState.BOSS_DEAD,
+      (this.boss?.active ?? false) || this.state === GameState.BOSS_DEAD,
     );
     this.hud.update(dt);
     this.input.endFrame();
-    this.reflection.update(this.time, this.renderer);
+    this.reflection?.update(this.time, this.renderer);
     this.renderer.render(this.scene, this.camera.camera);
     this.updateTelemetry(dt, rawDt);
     requestAnimationFrame(this.tick);
@@ -324,14 +490,46 @@ export class Game {
       ? this.raycaster.ray.intersectPlane(this.ground, this.aim)
       : null;
     this.player.update(dt, this.time, this.input, aim);
+    if (this.chapter === 'fields') {
+      const nearElder =
+        Math.hypot(
+          this.player.position.x - ELDER_POSITION.x,
+          this.player.position.z - ELDER_POSITION.z,
+        ) < 4.8;
+      if (this.input.consume('KeyE')) {
+        if (nearElder) {
+          this.startStory();
+          return;
+        }
+        if (
+          Math.hypot(this.player.position.x - VILLAGE.x, this.player.position.z - VILLAGE.z) < 3.8
+        )
+          this.restAtWell();
+      }
+      if (nearElder && !this.elderGreeted) {
+        this.startStory();
+        return;
+      }
+    }
+    if (
+      canLeaveCastle(
+        this.bossDefeated,
+        this.castle?.exitReady ?? false,
+        this.player.position.x,
+        this.player.position.z,
+      )
+    ) {
+      void this.enterFields();
+      return;
+    }
     for (const enemy of this.enemies) {
-      const near = Math.abs(enemy.position.z - this.player.position.z) < 34;
+      const near = enemy.position.distanceToSquared(this.player.position) < 34 ** 2;
       enemy.model.group.visible = near && enemy.deadTime < 4;
       if (!near) continue;
       enemy.update(dt, this.time, this.player, this.camera.camera);
       if (enemy.tryHit(this.player)) this.camera.shake = 0.19;
     }
-    if (this.player.position.z < -108 || this.boss.active) {
+    if (this.boss && (this.player.position.z < -108 || this.boss.active)) {
       this.boss.update(dt, this.time, this.player);
       if (this.boss.tryHit(this.player)) this.camera.shake = 0.28;
     }
@@ -348,12 +546,61 @@ export class Game {
     this.uiTime -= dt;
     if (this.uiTime <= 0) {
       this.uiTime = 0.07;
-      this.progress();
+      if (this.chapter === 'castle') this.progress();
+      else this.fieldProgress();
       this.hud.health(this.player.health, this.player.stamina, this.player.blocking);
-      if (this.boss.active) this.hud.boss(this.boss.health, this.boss.tell);
+      if (this.boss?.active) this.hud.boss(this.boss.health, this.boss.tell);
     }
   }
+  private restAtWell() {
+    this.player.health = 100;
+    this.player.stamina = 100;
+    this.lastHealth = 100;
+    this.audio.play('heal');
+    this.effects.burst(this.player.position.x, 1, this.player.position.z, 0xffe3a3, 25, 2);
+    this.hud.toast('FIRSTLIGHT WELL · Health and energy restored.');
+  }
+  private fieldProgress() {
+    const p = this.player.position;
+    const village = inVillage(p.x, p.z);
+    const area = village ? 'village' : 'fields';
+    if (area !== this.fieldArea) {
+      this.fieldArea = area;
+      this.hud.location(
+        village ? 'Firstlight Village' : 'The Greenfields',
+        village ? 'A LIGHT THAT ENDURED · SANCTUARY' : 'CHAPTER II · A NEW BEGINNING',
+      );
+    }
+    if (village && !this.villageFound) {
+      this.villageFound = true;
+      this.restAtWell();
+      this.hud.toast('FIRSTLIGHT FOUND · Health restored · Village checkpoint reached');
+      this.hud.memory('A child laughs somewhere beyond the roofs. The machine pauses to listen.');
+    }
+    const remaining = this.enemies.filter((e) => e.health > 0).length;
+    if (!remaining && !this.allMonstersCleared) {
+      this.allMonstersCleared = true;
+      this.audio.play('victory');
+      this.hud.toast('THE FIELDS ARE QUIET · Firstlight will see another dawn.');
+    }
+    this.hud.objective(
+      !this.storyRead
+        ? 'Speak with Elder Rowan by the old tree.'
+        : !this.villageFound
+          ? 'Follow the sunflowers to Firstlight Village.'
+          : remaining
+            ? `Guard the new beginning. ${remaining} creatures roam the fields.`
+            : 'The village is safe. Explore the world you have protected.',
+      village ? 'FIRSTLIGHT SANCTUARY' : 'HUMANITY’S LAST HOPE',
+    );
+    const nearElder = Math.hypot(p.x - ELDER_POSITION.x, p.z - ELDER_POSITION.z) < 4.8;
+    const nearWell = Math.hypot(p.x - VILLAGE.x, p.z - VILLAGE.z) < 3.8;
+    this.hud.interaction(
+      nearElder ? 'Speak with Elder Rowan' : nearWell ? 'Rest at the village well' : '',
+    );
+  }
   private progress() {
+    if (!this.castle || !this.boss) return;
     let index = AREAS.findIndex(
       (area) => this.player.position.z <= area.z && this.player.position.z > area.end,
     );
@@ -367,7 +614,12 @@ export class Game {
       if (this.enemies.every((e) => e.zone !== zone || e.health === 0)) {
         if (this.castle.openGate(zone)) this.hud.toast('The seal has broken. The way is open.');
       }
-    if (this.boss.active)
+    if (this.bossDefeated)
+      this.hud.objective(
+        'Walk through the sunlit gate behind the throne.',
+        'A WORLD BEYOND THE WALLS',
+      );
+    else if (this.boss.active)
       this.hud.objective('Let it strike. Answer in the silence.', 'THE HOODED REAPER');
     else if (index > 0 && index < 4 && remaining > 0)
       this.hud.objective(
@@ -434,7 +686,7 @@ export class Game {
       triangles: number;
     };
     this.hud.debug(
-      `${this.rendererName}  |  ${Math.round(this.fps)} FPS\nDraw calls  ${info.calls ?? info.drawCalls ?? 0}\nTriangles   ${info.triangles.toLocaleString()}\nResolution  ${this.resolutionScale.toFixed(2)}×\nPlayer      ${this.player.position.x.toFixed(1)}, ${this.player.position.z.toFixed(1)}\nHealth      ${this.player.health} / 100\nBoss HP     ${this.boss.health} / ${BOSS.health}\nBoss state  ${this.boss.state}\nAggro       ${BOSS_AGGRO_DISTANCE} units\nGame state  ${this.state}`,
+      `${this.rendererName}  |  ${Math.round(this.fps)} FPS\nDraw calls  ${info.calls ?? info.drawCalls ?? 0}\nTriangles   ${info.triangles.toLocaleString()}\nResolution  ${this.resolutionScale.toFixed(2)}×\nPlayer      ${this.player.position.x.toFixed(1)}, ${this.player.position.z.toFixed(1)}\nHealth      ${this.player.health} / 100\nBoss HP     ${this.boss?.health ?? '—'} / ${BOSS.health}\nBoss state  ${this.boss?.state ?? 'Greenfields'}\nAggro       ${BOSS_AGGRO_DISTANCE} units\nGame state  ${this.state}`,
       this.debugEnabled,
     );
   }

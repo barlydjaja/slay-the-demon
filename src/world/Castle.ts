@@ -32,6 +32,15 @@ export class Castle {
   memories: Memory[] = [];
   zoneGroups: THREE.Group[] = [];
   shrine = new THREE.Group();
+  exitOpened = false;
+  private exit = new THREE.Group();
+  private exitBlocker: Obstacle;
+  private daylight = new THREE.MeshBasicMaterial({
+    color: 0xffe0a0,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
   private rng = seededRandom();
   private glow = glowTexture();
   private fog: THREE.Mesh[] = [];
@@ -52,6 +61,14 @@ export class Castle {
     m.lightStone.map = texture;
     m.darkStone.map = texture;
     for (let i = 0; i < AREAS.length; i++) this.buildArea(i);
+    this.exitBlocker = collision.add(0, -150, 8, 1);
+    this.exit.position.z = -150;
+    for (let i = -4; i <= 4; i++) box(this.exit, m.darkStone, i * 0.82, 3.3, 0, 0.73, 6.6, 0.55);
+    for (const y of [1, 5.4]) box(this.exit, m.iron, 0, y, 0.32, 7.4, 0.2, 0.15);
+    this.group.add(this.exit);
+    const dawn = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 7), this.daylight);
+    dawn.position.set(0, 3.5, -152.8);
+    this.group.add(dawn);
     this.makeShrine();
     this.memories = [
       {
@@ -586,6 +603,11 @@ export class Castle {
     }
   }
   update(time: number, dt: number, playerZ: number) {
+    if (this.exitOpened) {
+      this.exit.position.y = Math.min(7.6, this.exit.position.y + dt * 2.1);
+      this.daylight.opacity = Math.min(0.85, this.daylight.opacity + dt * 0.3);
+      if (this.exit.position.y > 4) this.exitBlocker.active = false;
+    }
     for (const t of this.torches) {
       const flicker =
         1 + Math.sin(time * 9 + t.phase) * 0.13 + Math.sin(time * 17 + t.phase) * 0.06;
@@ -617,7 +639,17 @@ export class Castle {
     }
     return false;
   }
+  get exitReady() {
+    return this.exitOpened && this.exitBlocker.active === false;
+  }
+  resetExit() {
+    this.exitOpened = false;
+    this.exit.position.y = 0;
+    this.exitBlocker.active = true;
+    this.daylight.opacity = 0;
+  }
   reset() {
+    this.resetExit();
     for (const gate of this.gates) {
       gate.opened = false;
       gate.blocker.active = true;

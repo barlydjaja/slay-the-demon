@@ -4,6 +4,8 @@ const crest = `<svg viewBox="0 0 48 60" fill="none" aria-hidden="true"><path d="
 const robotIcon = `<svg viewBox="0 0 50 50" fill="none" aria-hidden="true"><path d="M24 6v6m-3-6h6" stroke="#b9bfaa" stroke-width="2"/><rect x="11" y="13" width="28" height="24" rx="7" fill="#658c9d"/><path d="M14 34h22" stroke="#a2b7bb" stroke-width="3"/><rect x="15" y="20" width="20" height="9" rx="3" fill="#14232e"/><path d="M20 23v3m10-3v3" stroke="#cdf3f1" stroke-width="2.5"/><path d="M7 20v10m36-10v10" stroke="#8198a1" stroke-width="3"/></svg>`;
 export interface UIActions {
   play: () => void;
+  advance: () => void;
+  leaveDialogue: () => void;
   resume: () => void;
   restart: () => void;
   quit: () => void;
@@ -43,9 +45,13 @@ export class HUD {
       <section id="credits" class="modal-backdrop hidden"><div class="modal credits-modal"><button id="credits-close" class="close-modal" aria-label="Close credits">×</button><div class="modal-crest">${crest}</div><p class="eyebrow">A SMALL MACHINE. AN ENTIRE WORLD.</p><h2>The Last Hope</h2><p>A tale of a forgotten creation<br>and the courage to keep going.</p><div class="credits-rule"></div><p class="credit-label">CRAFTED WITH</p><p>Three.js · TypeScript · Web Audio</p><p class="credit-label">ART &amp; SOUND</p><p>Original procedural 3D models,<br>environments, animation, and score.</p><p class="modal-footnote">For everyone who has ever felt left behind.</p></div></section>
       <section id="death" class="modal-backdrop hidden"><div class="modal ending"><p class="eyebrow">EVEN SMALL LIGHTS FLICKER</p><h2>Not the end.</h2><p>The machine is silent.<br>But a little hope remains.</p><button id="retry" class="primary">AWAKEN AGAIN <span>→</span></button><button id="death-quit" class="text-button">RETURN TO TITLE</button><small id="checkpoint-note">Continue from your last sanctuary.</small></div></section>
       <section id="victory" class="modal-backdrop hidden"><div class="modal ending"><div class="modal-crest">${crest}</div><p class="eyebrow">THE DEMON HAS FALLEN.</p><h2>The Last Hope</h2><p>Humanity may be gone,<br>but its final creation remains.</p><div class="title-rule"><i></i><b>✧</b><i></i></div><p class="victory-line">And for the first time,<br>the silence feels like peace.</p><button id="play-again" class="primary">PLAY AGAIN <span>→</span></button><button id="victory-quit" class="text-button">RETURN TO TITLE</button></div></section>
+      <div id="interaction" class="interaction hidden"><kbd>E</kbd><span id="interaction-text"></span></div>
+      <section id="story-dialogue" class="story-dialogue hidden" role="dialog" aria-modal="true" aria-labelledby="speaker-name" aria-describedby="dialogue-text"><div class="dialogue-ornament" aria-hidden="true">✧</div><div class="dialogue-heading"><div><p class="eyebrow">KEEPER OF FIRSTLIGHT</p><h2 id="speaker-name">Elder Rowan</h2></div><span id="dialogue-page"></span></div><p id="dialogue-text"></p><div class="dialogue-actions"><button id="dialogue-leave" class="text-button">LISTEN LATER <kbd>ESC</kbd></button><button id="dialogue-next" class="primary">CONTINUE <kbd>E</kbd></button></div></section>
       <div id="debug" class="debug hidden"></div><div class="desktop-notice"><div class="modal-crest">${crest}</div><h2>A journey for a bigger window.</h2><p>This experience is designed for desktop browsers.<br>Please use a keyboard and mouse.</p></div>`;
     this.root.querySelectorAll<HTMLElement>('[id]').forEach((el) => (this.elements[el.id] = el));
     this.on('play', actions.play);
+    this.on('dialogue-next', actions.advance);
+    this.on('dialogue-leave', actions.leaveDialogue);
     this.on('resume', actions.resume);
     this.on('pause-button', () =>
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })),
@@ -154,6 +160,8 @@ export class HUD {
       'victory',
       'settings',
       'credits',
+      'story-dialogue',
+      'interaction',
     ])
       this.hide(id);
     const isMenu = state === GameState.MENU;
@@ -166,13 +174,19 @@ export class HUD {
       for (const id of ['menu', 'masthead', 'scene-caption', 'menu-footer']) this.show(id);
     if ([GameState.PLAYING, GameState.BOSS_COMBAT, GameState.BOSS_DEAD].includes(state))
       this.show('hud');
-    if (state === GameState.LOADING) this.show('loading');
+    if (state === GameState.DIALOGUE) this.show('story-dialogue');
+    if (state === GameState.LOADING || state === GameState.TRANSITION) this.show('loading');
     if (state === GameState.INTRO) this.show('intro');
     if (state === GameState.PAUSED) this.show('pause');
     if (state === GameState.PLAYER_DEAD) this.show('death');
     if (state === GameState.VICTORY) this.show('victory');
     if (state !== GameState.BOSS_COMBAT) this.hide('boss-ui');
-    if (isMenu || state === GameState.INTRO) {
+    if (
+      isMenu ||
+      state === GameState.INTRO ||
+      state === GameState.TRANSITION ||
+      state === GameState.DIALOGUE
+    ) {
       this.hide('memory');
       this.hide('toast');
       this.hide('area-reveal');
@@ -198,12 +212,45 @@ export class HUD {
   }
   area(index: number) {
     const area = AREAS[index];
+    this.location(area.name, area.subtitle);
+  }
+  location(name: string, subtitle: string) {
+    const area = { name, subtitle };
     this.el('area-top-subtitle').textContent = area.subtitle;
     this.el('area-top-name').textContent = area.name;
     this.el('area-reveal-subtitle').textContent = area.subtitle;
     this.el('area-reveal-name').textContent = area.name;
     this.show('area-reveal');
     this.areaTimer = 4.5;
+  }
+  dialogue(text: string, index: number, total: number) {
+    this.el('dialogue-text').textContent = text;
+    this.el('dialogue-page').textContent = `${index + 1} / ${total}`;
+    this.el('dialogue-next').innerHTML =
+      `${index === total - 1 ? 'A NEW BEGINNING' : 'CONTINUE'} <kbd>E</kbd>`;
+    this.el('dialogue-next').focus({ preventScroll: true });
+  }
+  interaction(text: string) {
+    this.el('interaction-text').textContent = text;
+    this.el('interaction').classList.toggle(
+      'hidden',
+      !text || this.currentState !== GameState.PLAYING,
+    );
+  }
+  chapter(fields: boolean) {
+    document.body.classList.toggle('in-fields', fields);
+    this.el('play').querySelectorAll('span')[1].textContent = fields
+      ? 'RETURN TO THE GREENFIELDS'
+      : 'BEGIN JOURNEY';
+    this.el('scene-caption').querySelector('div')!.innerHTML = fields
+      ? 'THE GREENFIELDS<small>A NEW BEGINNING.</small>'
+      : 'THE FORGOTTEN GATE<small>AFTER THE RAIN, ONLY SILENCE.</small>';
+    this.root.querySelector('.version')!.innerHTML = fields
+      ? 'CHAPTER II <i>/</i> A NEW BEGINNING'
+      : 'CHAPTER I <i>/</i> THE HOLLOW KINGDOM';
+    this.root.querySelector('.tagline')!.innerHTML = fields
+      ? 'Beyond the fallen kingdom.<br>A world begins again.<br><em>One machine will guard it.</em>'
+      : 'A castle forgotten.<br>A demon awakened.<br><em>One machine remains.</em>';
   }
   objective(text: string, label = 'THE JOURNEY') {
     this.el('objective-text').textContent = text;

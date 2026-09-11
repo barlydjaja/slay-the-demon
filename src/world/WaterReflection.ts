@@ -106,6 +106,7 @@ export class WaterReflection {
   private texel = { value: new THREE.Vector2() };
   private size = new THREE.Vector2();
   private configureTarget: (width: number, height: number, scale: number) => void;
+  private releaseTarget: () => void = () => {};
 
   private constructor(
     surface: THREE.Mesh,
@@ -141,6 +142,7 @@ export class WaterReflection {
       const material = surface.material as THREE.ShaderMaterial;
       effect.time = material.uniforms.waterTime;
       effect.texel = material.uniforms.texel;
+      effect.releaseTarget = () => surface.dispose();
       return effect;
     }
 
@@ -160,6 +162,7 @@ export class WaterReflection {
     const texel = uniform(new THREE.Vector2());
     effect.time = time;
     effect.texel = texel;
+    effect.releaseTarget = () => mirror.reflector.dispose();
     const wave = vec2(
       positionWorld.z.mul(3.1).add(time.mul(1.4)).sin(),
       positionWorld.x.mul(2.7).sub(time.mul(1.1)).cos(),
@@ -186,6 +189,13 @@ export class WaterReflection {
   setQuality(quality: Quality) {
     this.quality = quality;
     this.surface.visible = quality !== 'low';
+  }
+
+  dispose() {
+    this.releaseTarget();
+    this.surface.removeFromParent();
+    this.surface.geometry.dispose();
+    (this.surface.material as THREE.Material).dispose();
   }
 
   update(time: number, renderer: THREE.WebGLRenderer | WebGPURenderer) {

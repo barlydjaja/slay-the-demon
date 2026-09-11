@@ -25,7 +25,7 @@ export class Effects {
   private ripples: { mesh: THREE.Mesh; life: number; duration: number; size: number }[] = [];
   private drops: THREE.Points;
   private dropPositions: Float32Array;
-  constructor() {
+  constructor(private outdoors = false) {
     this.mesh = new THREE.InstancedMesh(
       new THREE.SphereGeometry(1, 4, 3),
       new THREE.MeshBasicMaterial({
@@ -93,6 +93,7 @@ export class Effects {
       }),
     );
     this.drops.frustumCulled = false;
+    this.drops.visible = !outdoors;
     this.group.add(this.drops);
   }
   burst(x: number, y: number, z: number, color: number, count = 12, force = 3) {
@@ -117,6 +118,10 @@ export class Effects {
     r.mesh.visible = true;
   }
   splash(x: number, z: number, size = 1) {
+    if (this.outdoors) {
+      this.burst(x, 0.06, z, 0xa9b674, 3, 0.6);
+      return;
+    }
     this.ripple(x, z, size);
     this.burst(x, 0.08, z, 0x92becb, 5, size * 1.7);
   }
@@ -149,6 +154,7 @@ export class Effects {
       );
       if (r.life <= 0) r.mesh.visible = false;
     }
+    if (this.outdoors) return;
     for (let i = 0; i < 96; i++) {
       this.dropPositions[i * 3 + 1] -= dt * (3 + (i % 3));
       if (this.dropPositions[i * 3 + 1] < 0) {

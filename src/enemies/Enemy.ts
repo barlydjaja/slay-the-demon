@@ -6,9 +6,19 @@ import { Effects } from '../world/Effects';
 import { AudioManager } from '../audio/AudioManager';
 import { angleDamp, inAttackArc } from '../game/math';
 import { PLAYER } from '../game/config';
+import { FieldCreatureModel } from './FieldCreatureModel';
+import { isFieldSanctuary, type FieldMonster } from '../world/GreenfieldsConfig';
+export const ENEMY_PROFILES = {
+  armor: { health: 96, speed: 2.35, range: 2.1, windup: 0.75, damage: 15, height: 2.95 },
+  spider: { health: 64, speed: 4.15, range: 1.5, windup: 0.5, damage: 10, height: 1.3 },
+  wolf: { health: 96, speed: 4.7, range: 1.65, windup: 0.55, damage: 13, height: 2.2 },
+  golem: { health: 224, speed: 1.9, range: 2.3, windup: 1.15, damage: 27, height: 3.5 },
+  thornling: { health: 64, speed: 2.8, range: 1.7, windup: 0.7, damage: 12, height: 2.6 },
+} as const;
 export type EnemyState = 'patrol' | 'chase' | 'prepare' | 'attack' | 'recover' | 'dead';
 export class Enemy {
-  model: ArmorModel | SpiderModel;
+  model: ArmorModel | SpiderModel | FieldCreatureModel;
+  private profile: (typeof ENEMY_PROFILES)[keyof typeof ENEMY_PROFILES];
   state: EnemyState = 'patrol';
   health: number;
   maxHealth: number;
@@ -20,7 +30,7 @@ export class Enemy {
   private bar: THREE.Mesh;
   private barGroup = new THREE.Group();
   constructor(
-    public type: 'armor' | 'spider',
+    public type: 'armor' | 'spider' | FieldMonster,
     public zone: number,
     x: number,
     z: number,
@@ -28,10 +38,16 @@ export class Enemy {
     private effects: Effects,
     private audio: AudioManager,
   ) {
-    this.model = type === 'armor' ? new ArmorModel() : new SpiderModel();
+    this.profile = ENEMY_PROFILES[type];
+    this.model =
+      type === 'armor'
+        ? new ArmorModel()
+        : type === 'spider'
+          ? new SpiderModel()
+          : new FieldCreatureModel(type);
     this.model.group.position.set(x, 0, z);
     this.origin.copy(this.model.group.position);
-    this.maxHealth = this.health = type === 'armor' ? 96 : 64;
+    this.maxHealth = this.health = this.profile.health;
     this.phase = x * 7 + z;
     const back = new THREE.Mesh(
       new THREE.PlaneGeometry(1.1, 0.08),
@@ -44,7 +60,7 @@ export class Enemy {
     );
     this.bar.position.z = 0.003;
     this.barGroup.add(this.bar);
-    this.barGroup.position.y = type === 'armor' ? 2.95 : 1.3;
+    this.barGroup.position.y = this.profile.height;
     this.model.group.add(this.barGroup);
     this.barGroup.visible = false;
   }
@@ -63,7 +79,37 @@ export class Enemy {
     const dx = player.position.x - this.position.x,
       dz = player.position.z - this.position.z,
       distance = Math.hypot(dx, dz),
-      range = this.type === 'armor' ? 2.1 : 1.5;
+      range = this.profile.range;
+    // The elder's clearing and Firstlight are sanctuaries. Cancel telegraphed
+    // attacks immediately and return to the spawn if the player seeks shelter.
+    if (
+      this.zone === 5 &&
+      (isFieldSanctuary(player.position.x, player.position.z) ||
+        this.position.distanceToSquared(this.origin) > 11 ** 2)
+    ) {
+      this.state = 'patrol';
+      this.timer = 0;
+      const homeX = this.origin.x - this.position.x,
+        homeZ = this.origin.z - this.position.z;
+      const homeDistance = Math.hypot(homeX, homeZ);
+      if (homeDistance > 0.15) {
+        this.collision.move(
+          this.position,
+          (homeX / homeDistance) * dt * this.profile.speed,
+          (homeZ / homeDistance) * dt * this.profile.speed,
+          0.5,
+        );
+        this.model.group.rotation.y = angleDamp(
+          this.model.group.rotation.y,
+          Math.atan2(homeX, homeZ),
+          5,
+          dt,
+        );
+      }
+      this.model.animate(time, homeDistance > 0.15, 0, 0);
+      this.barGroup.visible = false;
+      return;
+    }
     this.timer -= dt;
     let moving = false,
       windup = 0,
@@ -96,9 +142,9 @@ export class Enemy {
       if (distance > 15 || player.health <= 0) this.state = 'patrol';
       else if (distance < range + 0.4 && this.timer <= 0) {
         this.state = 'prepare';
-        this.timer = this.type === 'armor' ? 0.75 : 0.5;
+        this.timer = this.profile.windup;
       } else if (distance > range * 0.8) {
-        const speed = this.type === 'armor' ? 2.35 : 4.15;
+        const speed = this.profile.speed;
         this.collision.move(
           this.position,
           (dx / (distance || 1)) * dt * speed,
@@ -108,16 +154,12 @@ export class Enemy {
         moving = true;
       }
     } else if (this.state === 'prepare') {
-      windup = 1 - this.timer / (this.type === 'armor' ? 0.75 : 0.5);
+      windup = 1 - this.timer / this.profile.windup;
       if (this.timer <= 0) {
         this.state = 'attack';
         this.timer = 0.21;
         if (distance < range + 0.5) {
-          const result = player.takeDamage(
-            this.type === 'armor' ? 15 : 10,
-            this.position.x,
-            this.position.z,
-          );
+          const result = player.takeDamage(this.profile.damage, this.position.x, this.position.z);
           if (result === 'blocked') {
             this.state = 'recover';
             this.timer = 1.5;
@@ -131,7 +173,7 @@ export class Enemy {
         this.timer = this.type === 'armor' ? 0.9 : 1;
       }
     } else if (this.state === 'recover') {
-      if (this.type === 'spider' && distance < 3) {
+      if ((this.type === 'spider' || this.type === 'wolf') && distance < 3) {
         this.collision.move(
           this.position,
           (-dx / (distance || 1)) * dt * 2,

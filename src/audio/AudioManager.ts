@@ -7,6 +7,7 @@ export class AudioManager {
   private noise!: AudioBuffer;
   private muted = false;
   private boss = false;
+  private fields = false;
   private beat = 0;
   private elapsed = 0;
   async start() {
@@ -60,6 +61,11 @@ export class AudioManager {
         0.18,
       );
   }
+  setFields(fields: boolean) {
+    this.fields = fields;
+    this.beat = 0;
+    this.setBoss(false);
+  }
   setBoss(active: boolean) {
     this.boss = active;
     if (!this.ctx) return;
@@ -68,7 +74,11 @@ export class AudioManager {
     this.drone.gain.setTargetAtTime(0.002, now, 0.2);
     this.drone.gain.setTargetAtTime(active ? 0.07 : 0.025, now + 1.7, 0.8);
     this.voices.forEach((v, i) =>
-      v.frequency.setTargetAtTime((active ? [36.71, 55, 73.49] : [55, 82.41, 110.13])[i], now, 0.7),
+      v.frequency.setTargetAtTime(
+        (active ? [36.71, 55, 73.49] : this.fields ? [65.41, 98, 130.81] : [55, 82.41, 110.13])[i],
+        now,
+        0.7,
+      ),
     );
     if (active) this.play('wake');
   }
@@ -142,7 +152,7 @@ export class AudioManager {
         this.tone(95, 0.27, 0.16, 'sawtooth', 40);
         break;
       case 'step':
-        this.hiss(0.09, 0.22, 900);
+        this.hiss(0.09, this.fields ? 0.13 : 0.22, this.fields ? 1600 : 900);
         this.tone(175, 0.06, 0.03, 'triangle', 85);
         break;
       case 'dodge':
@@ -185,7 +195,9 @@ export class AudioManager {
       if (Math.floor(this.elapsed) % 4 === 0) this.hiss(0.25, 0.18, 1200);
     } else {
       this.beat = 3.8;
-      const notes = [220, 329.63, 293.66, 164.81, 246.94];
+      const notes = this.fields
+        ? [261.63, 329.63, 392, 523.25, 392, 329.63]
+        : [220, 329.63, 293.66, 164.81, 246.94];
       this.tone(notes[Math.floor(this.elapsed / 3.8) % notes.length], 2.8, 0.026);
       if (Math.random() > 0.45) this.tone(880 + Math.random() * 500, 0.16, 0.02);
     }

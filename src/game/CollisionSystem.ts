@@ -13,6 +13,7 @@ export interface Position {
 }
 /** Axis-separated circle/AABB resolution allows sliding along masonry. */
 export class CollisionSystem {
+  constructor(public bounds: { halfWidth: number; minZ: number; maxZ: number } = WORLD) {}
   obstacles: Obstacle[] = [];
   add(x: number, z: number, width: number, depth: number) {
     const obstacle = { x, z, width, depth, active: true };
@@ -21,10 +22,10 @@ export class CollisionSystem {
   }
   blocked(x: number, z: number, radius: number) {
     if (
-      x < -WORLD.halfWidth + radius ||
-      x > WORLD.halfWidth - radius ||
-      z < WORLD.minZ + radius ||
-      z > WORLD.maxZ - radius
+      x < -this.bounds.halfWidth + radius ||
+      x > this.bounds.halfWidth - radius ||
+      z < this.bounds.minZ + radius ||
+      z > this.bounds.maxZ - radius
     )
       return true;
     for (const o of this.obstacles) {
