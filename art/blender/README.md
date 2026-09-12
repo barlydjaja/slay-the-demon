@@ -1,4 +1,21 @@
-# Greenfields Blender assets
+# Blender asset libraries
+
+## Castle
+
+`castle-library.blend` contains 34 original castle assets, arranged for editing. `build_castle.py` constructs the architectural silhouettes and details in Blender, welds and bevels selected meshes, exports the game library, and renders each model with Cycles.
+
+```sh
+blender --background --factory-startup --python art/blender/build_castle.py
+python art/blender/make_review_sheets.py castle
+```
+
+The runtime export is `public/models/castle-kit.glb`; the measured inventory is `art/blender/castle-manifest.json`. Individual renders and three contact sheets are in `art/review/castle/`. Passing asset names after `--` regenerates the complete library but limits studio rendering to those names.
+
+The kit includes pointed and broken portals, walls with real window openings, a portcullis, fluted pillars, a fountain, sentinel statues, a throne, pews, an altar, a sanctuary, timber doors, a desk with books, dead trees, cloth, ivy, rubble, lighting props, and floor inlays. The level keeps its original collision layout, guardian seals, memories, and checkpoints. Floors use instancing; static decorations merge by material within each existing area. The portcullis and sanctuary crystal keep independent animation pivots.
+
+All 34 studio renders were inspected. Revisions reduced floor contrast, closed cloth seams, replaced metal rods with fractured stone, and reduced small bevel geometry. The castle was also inspected in the browser. Tests load the actual GLB, validate all mesh attributes, check a clear portal opening and ground-level floors, verify routes through all five areas, and exercise the seals, sanctuary animation, and boss exit. Cross-device performance has not been certified.
+
+## Greenfields
 
 `greenfields-library.blend` is the editable, organized library of 35 original models. `build_greenfields.py` authors the meshes, paints vertex colors, exports the runtime GLB, and renders each asset in Blender. Created with official Blender 4.5.13 LTS.
 

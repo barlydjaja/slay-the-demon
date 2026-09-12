@@ -1,7 +1,10 @@
+import { loadCastleAssets } from './fixtures/castle-assets';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Castle } from '../src/world/Castle';
 import { CollisionSystem } from '../src/game/CollisionSystem';
+import * as THREE from 'three';
+import { readFile } from 'node:fs/promises';
 
 // Canvas is only used to author small material textures. Geometry and collision
 // are real Three.js objects; a GPU is unnecessary for these topology tests.
@@ -63,9 +66,9 @@ function reachable(
   return false;
 }
 
-test('all five areas have a traversable route after their guardian seals open', () => {
+test('all five areas have a traversable route after their guardian seals open', async () => {
   const collision = new CollisionSystem(),
-    castle = new Castle(collision);
+    castle = new Castle(collision, await loadCastleAssets());
   assert.equal(castle.zoneGroups.length, 5);
   assert.equal(castle.gates.length, 3);
   assert.ok(castle.water.length >= 60);
@@ -73,20 +76,64 @@ test('all five areas have a traversable route after their guardian seals open', 
   for (const z of [-23, -55, -90, -111, -141])
     assert.ok(reachable(collision, { x: 0, z: 11 }, { x: 0, z }), `route to ${z}`);
 });
-test('uncleared courtyard seal cannot be bypassed at the edges', () => {
+test('uncleared courtyard seal cannot be bypassed at the edges', async () => {
   const collision = new CollisionSystem(),
-    castle = new Castle(collision);
+    castle = new Castle(collision, await loadCastleAssets());
   assert.equal(reachable(collision, { x: 0, z: -35 }, { x: 0, z: -50 }), false);
   castle.openGate(1);
   assert.equal(reachable(collision, { x: 0, z: -35 }, { x: 0, z: -50 }), true);
 });
-test('new journeys restore gate collisions and unread environmental memories', () => {
+test('new journeys restore gate collisions and unread environmental memories', async () => {
   const c = new CollisionSystem(),
-    castle = new Castle(c);
+    castle = new Castle(c, await loadCastleAssets());
   castle.openGate(1);
   castle.memories[0].seen = true;
   castle.reset();
   assert.equal(castle.gates[0].blocker.active, true);
   assert.equal(castle.gates[0].opened, false);
   assert.equal(castle.memories[0].seen, false);
+});
+
+test('Blender castle assets have complete meshes, ground-level floors and a clear portal', async () => {
+  const assets = await loadCastleAssets();
+  const manifest = JSON.parse(
+    await readFile(new URL('../art/blender/castle-manifest.json', import.meta.url), 'utf8'),
+  );
+  assert.equal(Object.keys(manifest).length, 34);
+  for (const name of Object.keys(manifest)) {
+    let triangles = 0;
+    assets.clone(name).traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      const { position, normal, color, uv } = object.geometry.attributes;
+      assert.ok(position && normal && color && uv, `${name}: missing geometry attributes`);
+      for (const value of position.array)
+        assert.ok(Number.isFinite(value), `${name}: invalid vertex`);
+      triangles += (object.geometry.index?.count ?? position.count) / 3;
+    });
+    assert.ok(triangles > 0, `${name}: empty prefab`);
+  }
+  for (const name of ['flagstone_0', 'flagstone_1', 'flagstone_2']) {
+    const tile = assets.clone(name);
+    tile.updateMatrixWorld(true);
+    const hits = new THREE.Raycaster(
+      new THREE.Vector3(0.3, 2, 0.2),
+      new THREE.Vector3(0, -1, 0),
+    ).intersectObject(tile, true);
+    assert.ok(hits.length > 0);
+    assert.ok(Math.abs(hits[0].point.y) < 0.02, `${name}: walking surface raised above the player`);
+  }
+  const portal = assets.clone('portal');
+  portal.updateMatrixWorld(true);
+  assert.equal(
+    new THREE.Raycaster(new THREE.Vector3(0, 1.5, 3), new THREE.Vector3(0, 0, -1)).intersectObject(
+      portal,
+      true,
+    ).length,
+    0,
+  );
+  const castle = new Castle(new CollisionSystem(), assets);
+  assert.doesNotThrow(
+    () => castle.update(2, 0.016, -110),
+    'sanctuary crystal must retain its animation pivot',
+  );
 });

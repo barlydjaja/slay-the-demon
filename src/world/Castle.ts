@@ -3,8 +3,9 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CollisionSystem, type Obstacle } from '../game/CollisionSystem';
 import { AREAS, type Quality } from '../game/config';
 import { seededRandom } from '../game/math';
-import { box, cylinder, sphere } from './primitives';
-import { materials as m, stoneTexture, glowTexture } from './materials';
+import { box, sphere } from './primitives';
+import { materials as m, glowTexture } from './materials';
+import { CastleAssets } from './CastleAssets';
 export interface Torch {
   position: THREE.Vector3;
   flame: THREE.Mesh;
@@ -34,6 +35,7 @@ export class Castle {
   shrine = new THREE.Group();
   exitOpened = false;
   private exit = new THREE.Group();
+  private crystal!: THREE.Object3D;
   private exitBlocker: Obstacle;
   private daylight = new THREE.MeshBasicMaterial({
     color: 0xffe0a0,
@@ -45,7 +47,10 @@ export class Castle {
   private glow = glowTexture();
   private fog: THREE.Mesh[] = [];
   private fogMaterial: THREE.MeshBasicMaterial;
-  constructor(public collision: CollisionSystem) {
+  constructor(
+    public collision: CollisionSystem,
+    private assets: CastleAssets,
+  ) {
     this.fogMaterial = new THREE.MeshBasicMaterial({
       map: this.glow,
       color: 0x99b5bc,
@@ -54,17 +59,10 @@ export class Castle {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    const texture = stoneTexture();
-    m.stone.map = texture;
-    m.stone.bumpMap = texture;
-    m.stone.bumpScale = 0.045;
-    m.lightStone.map = texture;
-    m.darkStone.map = texture;
     for (let i = 0; i < AREAS.length; i++) this.buildArea(i);
     this.exitBlocker = collision.add(0, -150, 8, 1);
     this.exit.position.z = -150;
-    for (let i = -4; i <= 4; i++) box(this.exit, m.darkStone, i * 0.82, 3.3, 0, 0.73, 6.6, 0.55);
-    for (const y of [1, 5.4]) box(this.exit, m.iron, 0, y, 0.32, 7.4, 0.2, 0.15);
+    this.exit.add(assets.clone('portcullis'));
     this.group.add(this.exit);
     const dawn = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 7), this.daylight);
     dawn.position.set(0, 3.5, -152.8);
@@ -107,48 +105,46 @@ export class Castle {
   private buildArea(index: number) {
     const area = AREAS[index],
       g = new THREE.Group();
+    g.name = area.name;
     this.group.add(g);
     this.zoneGroups.push(g);
     const start = area.z,
       end = area.end,
       mid = (start + end) / 2,
       length = start - end;
-    box(g, m.darkStone, 0, -0.65, mid, 27, 1.2, length);
-    box(g, m.edge, 0, -1.15, mid, 27.3, 0.18, length);
-    this.floor(g, start, end, index);
+    const base = this.assets.place(g, 'foundation', 0, 0, mid);
+    base.scale.z = length / 8;
+    this.floor(g, start, end);
     for (const side of [-1, 1]) {
-      box(g, m.darkStone, side * 13, -0.04, mid, 0.8, 0.7, length);
       this.collision.add(side * 13, mid, 0.85, length);
       for (let z = start - 3; z > end; z -= 8) {
         this.pillar(g, side * 11.8, z, side === -1 ? 5.8 : 2.5);
         if (side === -1) {
-          box(g, m.stone, -12.8, 1.7, z - 3, 0.75, 3.4, 6.3);
-          this.window(g, -12.35, z - 3.4, 4.2, Math.PI / 2, index === 3);
-        } else if (this.rng() > 0.4) box(g, m.stone, 12.65, 0.8, z - 3, 0.65, 1.6, 5);
+          this.assets.place(g, 'wall_bay', -12.8, 0, z - 3.2, 1, Math.PI / 2);
+          this.assets.place(g, 'buttress', -13.15, 0, z + 0.4, 1, Math.PI / 2);
+          if (index === 3)
+            this.assets.place(g, 'stained_window', -12.22, 1.68, z - 3.2, 0.88, Math.PI / 2);
+        } else {
+          const wall = this.assets.place(g, 'parapet', 12.65, 0, z - 3.2, 1, Math.PI / 2);
+          wall.scale.x = 0.9;
+        }
       }
     }
     if (index === 0) {
-      this.arch(g, 0, 8, 7.8, 7.2);
+      this.arch(g, 0, 8, 7.8, 7.2, false);
       for (const side of [-1, 1]) {
-        const door = box(g, m.wood, side * 3.3, 1.6, 9.2, 2.2, 3.3, 0.24);
-        door.rotation.y = side * 0.9;
+        const door = this.assets.place(g, 'door_leaf', side * 3.3, 0, 9.2, 1, side * 0.9);
         door.rotation.z = side * 0.12;
-        for (let y = 0.7; y < 3; y += 1) box(g, m.iron, side * 3.3, y, 9.43, 2.2, 0.1, 0.1);
         this.torch(g, side * 4.7, 1.6, 7.1);
       }
       this.statue(g, -7.8, 2);
       this.tree(g, 9.5, 3, 1);
       this.tree(g, -10.5, 12, 0.7);
-      box(g, m.wood, -6, 0.26, 4, 0.65, 0.24, 0.24);
-      cylinder(g, m.wood, -5.76, 0.43, 4, 0.12, 0.14, 0.4);
-      box(g, m.wood, -6, 0.12, 4, 0.8, 0.06, 0.45);
-      this.arch(g, 0, -12, 9, 6.5);
+      this.assets.place(g, 'wooden_horse', -6, 0.02, 4);
+      this.arch(g, 0, -12, 9, 6.5, true);
     }
     if (index === 1) {
-      cylinder(g, m.darkStone, 7, 0.12, -31, 2.5, 2.7, 0.45, 16);
-      cylinder(g, m.lightStone, 7, 0.45, -31, 1.9, 2, 0.32, 16);
-      cylinder(g, m.darkStone, 7, 0.61, -31, 1.62, 1.62, 0.04, 16);
-      this.statue(g, 7, -31, 0.7);
+      this.assets.place(g, 'fountain', 7, 0, -31);
       this.collision.add(7, -31, 4.5, 4.5);
       this.tree(g, -9, -23, 1.3);
       this.tree(g, 10, -39, 0.9);
@@ -163,62 +159,37 @@ export class Castle {
         this.pillar(g, 7, z, z === -60 ? 1.8 : 4.2);
         this.torch(g, -7, 2.3, z + 1);
       }
-      box(g, m.wood, -8, 0.8, -57, 2.6, 0.2, 1.2);
-      for (const x of [-9, -7]) box(g, m.wood, x, 0.36, -57, 0.14, 0.8, 1);
-      for (let i = 0; i < 12; i++) {
-        const book = box(
-          g,
-          i % 2 ? m.cloth : m.wood,
-          -7.8 + this.rng() * 2,
-          0.96 + Math.floor(i / 4) * 0.09,
-          -57 + (this.rng() - 0.5) * 0.8,
-          0.32,
-          0.08,
-          0.46,
-        );
-        book.rotation.y = this.rng() * 2;
-      }
-      box(g, m.gold, -12.2, 3.1, -59, 0.15, 2.6, 1.9);
-      box(g, m.cloth, -12.05, 3.1, -59, 0.06, 2.2, 1.5);
-      const fallen = box(g, m.lightStone, 8, 0.65, -65, 1.3, 1.3, 4.5);
-      fallen.rotation.y = 0.43;
+      this.assets.place(g, 'scribe_desk', -8, 0, -57);
+      this.assets.place(g, 'torn_banner', -12.2, 1.8, -59, 1, Math.PI / 2);
+      this.assets.place(g, 'fallen_column', 8, 0, -65, 1, 0.43);
       this.collision.add(8, -65, 3, 4.5);
-      this.arch(g, 0, end, 8, 7.5);
+      this.arch(g, 0, end, 8, 7.5, true);
     }
     if (index === 3) {
-      for (let z = -85; z > -104; z -= 5)
+      for (let z = -85; z > -104; z -= 5) {
         for (const side of [-1, 1]) {
-          const x = side * 6;
-          box(g, m.wood, x, 0.65, z, 3.8, 0.23, 0.8);
-          box(g, m.wood, x, 1.15, z - 0.4, 3.8, 1.1, 0.15).rotation.x = 0.13;
-          for (const dx of [-1.4, 1.4]) box(g, m.wood, x + dx, 0.3, z, 0.15, 0.6, 0.6);
-          this.collision.add(x, z, 4, 1);
+          this.assets.place(g, 'chapel_pew', side * 6, 0, z);
+          this.collision.add(side * 6, z, 4, 1);
         }
-      box(g, m.lightStone, 0, 0.55, -107, 4.1, 1.1, 1.3);
-      box(g, m.edge, 0, 1.15, -107, 4.4, 0.18, 1.6);
+      }
+      this.assets.place(g, 'chapel_altar', 0, 0, -107);
       this.collision.add(0, -107, 4.4, 1.6);
-      for (const x of [-1.4, -0.7, 0.7, 1.4]) this.candle(g, x, 1.28, -107);
+      for (const x of [-1.4, -0.7, 0.7, 1.4]) this.candle(g, x, 1.2, -107);
       this.statue(g, -8.7, -106, 1.3);
       this.statue(g, 8.7, -106, 1.3);
       this.arch(g, 0, end, 9, 8);
-      this.window(g, 0, -113.7, 6.5, 0, true);
+      this.assets.place(g, 'stained_window', 0, 5, -114.5, 1.05);
     }
     if (index === 4) {
-      const ring = new THREE.Mesh(new THREE.RingGeometry(10.6, 10.78, 80), m.gold);
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.set(0, 0.035, -134);
-      g.add(ring);
-      const inner = new THREE.Mesh(new THREE.RingGeometry(7.5, 7.57, 80), m.edge);
-      inner.rotation.x = -Math.PI / 2;
-      inner.position.set(0, 0.033, -134);
-      g.add(inner);
-      box(g, m.darkStone, 0, 2, -154, 27, 4, 1.6);
+      this.assets.place(g, 'floor_medallion', 0, 0, -134);
       this.arch(g, 0, -151, 10, 11);
-      this.window(g, 0, -151, 7.7, 0, true);
-      for (const x of [-9, 9]) this.statue(g, x, -146, 2);
+      this.assets.place(g, 'stained_window', 0, 7.7, -151, 1.1);
+      this.statue(g, -9, -146, 2);
+      this.assets.place(g, 'broken_throne', 9, 0, -146, 1.5, -0.28);
+      this.collision.add(9, -146, 3.6, 3.2);
       for (let i = 0; i < 12; i++) {
-        const angle = (i / 12) * Math.PI * 2;
-        const x = Math.sin(angle) * 11,
+        const angle = (i / 12) * Math.PI * 2,
+          x = Math.sin(angle) * 11,
           z = -134 + Math.cos(angle) * 13;
         this.candle(g, x, 0, z);
         this.candle(g, x + 0.32, 0, z + 0.26);
@@ -235,220 +206,91 @@ export class Castle {
         z = start - 2 - this.rng() * (length - 4);
       this.puddle(x, z, 0.6 + this.rng() * 2.6, 0.6 + this.rng() * 2);
     }
-    for (let i = 0; i < 90; i++) {
-      const x = (this.rng() > 0.5 ? 1 : -1) * (8 + this.rng() * 4.3),
+    for (let i = 0; i < 42; i++) {
+      const x = (this.rng() > 0.5 ? 1 : -1) * (8.5 + this.rng() * 3.6),
         z = start - this.rng() * length;
-      const rubble = box(
+      this.assets.place(
         g,
-        this.rng() > 0.6 ? m.moss : m.stone,
+        `rubble_${i % 3}`,
         x,
-        0.12 + this.rng() * 0.13,
+        -0.03,
         z,
-        0.15 + this.rng() * 0.7,
-        0.15 + this.rng() * 0.5,
-        0.15 + this.rng() * 0.6,
+        0.4 + this.rng() * 0.55,
+        this.rng() * Math.PI * 2,
       );
-      rubble.rotation.set(this.rng() * 0.4, this.rng() * 6, this.rng() * 0.25);
     }
-    for (let i = 0; i < 15; i++) {
-      const z = start - this.rng() * length;
-      box(
+    for (let i = 0; i < 14; i++) {
+      this.assets.place(
         g,
-        m.moss,
+        'ivy',
         -12.25,
-        this.rng() * 3,
-        z,
-        0.09,
-        0.5 + this.rng() * 2,
-        0.1 + this.rng() * 0.3,
-      ).rotation.x = this.rng() * 0.5;
+        0.2 + this.rng() * 3.1,
+        start - this.rng() * length,
+        0.65 + this.rng() * 0.7,
+        Math.PI / 2,
+      );
     }
     this.mergeStatic(g);
   }
-  private floor(g: THREE.Group, start: number, end: number, index: number) {
-    const geom = new THREE.BoxGeometry(1.48, 0.16, 1.48),
+  private floor(g: THREE.Group, start: number, end: number) {
+    const matrices: THREE.Matrix4[][] = [[], [], []],
       dummy = new THREE.Object3D();
-    const options = [
-      { color: 0x405761, r: 0.9 },
-      { color: 0x344c57, r: 0.53 },
-      { color: 0x293f4a, r: 0.27 },
-      { color: 0x52707a, r: 0.68 },
-    ];
-    const cells: { x: number; z: number; type: number; y: number }[] = [];
-    for (let z = start - 0.75; z > end; z -= 1.55)
-      for (let x = -12.4; x < 13; x += 1.55)
-        cells.push({
-          x: x + (Math.round(z) % 2) * 0.045,
-          z,
-          type: Math.floor(this.rng() * 4),
-          y: this.rng() * 0.022,
-        });
-    options.forEach((o, type) => {
-      const material = new THREE.MeshStandardMaterial({
-        color: o.color,
-        roughness: o.r,
-        metalness: type === 2 ? 0.34 : 0.05,
-        map: m.stone.map,
-        bumpMap: m.stone.bumpMap,
-        bumpScale: 0.025,
-        envMapIntensity: 0.8,
-      });
-      const matching = cells.filter((c) => c.type === type),
-        mesh = new THREE.InstancedMesh(geom, material, matching.length);
-      matching.forEach((p, i) => {
-        dummy.position.set(p.x, -0.07 + p.y, p.z);
-        dummy.rotation.y = (this.rng() - 0.5) * 0.024;
+    for (let z = start - 0.75; z > end; z -= 1.52) {
+      for (let x = -12.3; x < 13; x += 1.52) {
+        dummy.position.set(x + (Math.round(z) % 2) * 0.025, 0, z);
+        dummy.rotation.y = (Math.floor(this.rng() * 4) * Math.PI) / 2;
         dummy.updateMatrix();
-        mesh.setMatrixAt(i, dummy.matrix);
-      });
-      mesh.receiveShadow = true;
-      mesh.computeBoundingSphere();
-      g.add(mesh);
-    });
-    for (const x of [-3.6, 3.6])
-      box(g, index === 4 ? m.gold : m.edge, x, 0.025, (start + end) / 2, 0.1, 0.035, start - end);
-    if (index === 0)
-      for (let i = 0; i < 4; i++)
-        box(g, m.lightStone, 0, -0.14 + i * 0.015, 14 - i * 0.62, 8, 0.15, 0.57);
+        matrices[Math.floor(this.rng() * 3)].push(dummy.matrix.clone());
+      }
+    }
+    matrices.forEach((items, i) => this.assets.batch(g, `flagstone_${i}`, items));
+    for (const x of [-3.6, 3.6]) {
+      const border = this.assets.place(g, 'floor_border', x, 0, (start + end) / 2);
+      border.scale.z = (start - end) / 8;
+    }
   }
   private pillar(g: THREE.Group, x: number, z: number, height: number) {
-    box(g, m.darkStone, x, 0.25, z, 1.8, 0.5, 1.8);
-    box(g, m.lightStone, x, 0.55, z, 1.5, 0.14, 1.5);
-    cylinder(g, m.stone, x, height / 2 + 0.55, z, 0.49, 0.61, height, 8);
-    for (let y = 1; y < height + 0.5; y += 1.1) cylinder(g, m.edge, x, y, z, 0.64, 0.64, 0.12, 8);
-    box(g, m.lightStone, x, height + 0.65, z, 1.4, 0.25, 1.4);
-    box(g, m.darkStone, x, height + 0.9, z, 1.65, 0.28, 1.65);
+    const broken = height < 3;
+    const pillar = this.assets.place(g, broken ? 'pillar_broken' : 'pillar', x, 0, z);
+    pillar.scale.y = height / (broken ? 2 : 5.8);
     this.collision.add(x, z, 1.65, 1.65);
   }
-  private arch(g: THREE.Group, x: number, z: number, width: number, height: number) {
-    const radius = width / 2;
-    for (const side of [-1, 1]) {
-      this.pillar(g, x + side * (radius + 0.5), z, height * 0.65);
-      const wallWidth = 13 - radius - 1.1;
-      box(g, m.stone, side * (radius + 1.1 + wallWidth / 2), 1.7, z, wallWidth, 3.4, 1.3);
-      this.collision.add(side * (radius + 1.1 + wallWidth / 2), z, wallWidth, 1.3);
-      for (let j = 0; j < 6; j++)
-        box(
-          g,
-          m.edge,
-          side * (radius + 1.1 + wallWidth / 2),
-          0.3 + j * 0.55,
-          z + 0.69,
-          wallWidth,
-          0.045,
-          0.07,
-        );
-    }
-    for (let i = 0; i < 17; i++) {
-      const angle = (i / 16) * Math.PI;
-      const block = box(
-        g,
-        m.lightStone,
-        x + Math.cos(angle) * radius,
-        height * 0.6 + Math.sin(angle) * radius * 0.77,
-        z,
-        0.85,
-        0.72,
-        1,
-      );
-      block.rotation.z = angle - Math.PI / 2;
-    }
-    box(g, m.gold, x, height * 0.6 + radius * 0.77 + 0.25, z, 0.5, 0.7, 1.08).rotation.z =
-      Math.PI / 4;
-  }
-  private window(
+  private arch(
     g: THREE.Group,
     x: number,
     z: number,
-    y: number,
-    rotation: number,
-    stained = false,
+    width: number,
+    height: number,
+    broken = false,
   ) {
-    const group = new THREE.Group();
-    group.position.set(x, y, z);
-    group.rotation.y = rotation;
-    g.add(group);
-    const glass = new THREE.MeshBasicMaterial({
-      color: stained ? 0x8fa4b9 : 0x789cac,
-      transparent: true,
-      opacity: 0.5,
-      side: THREE.DoubleSide,
-    });
-    box(group, m.darkStone, 0, 0, -0.11, 3.2, 5, 0.18);
+    const portal = this.assets.place(g, broken ? 'portal_broken' : 'portal', x, 0, z);
+    portal.scale.set(width / 8, height / 8.35, 1);
+    const radius = width / 2;
     for (const side of [-1, 1]) {
-      box(group, m.lightStone, side * 1.5, 0, 0, 0.2, 5.2, 0.28);
-      box(group, m.lightStone, side * 0.5, 0, 0.05, 0.11, 4.9, 0.19);
-    }
-    for (let i = 0; i < 6; i++) {
-      const pane = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.87, 1.43),
-        stained
-          ? new THREE.MeshBasicMaterial({
-              color: [0x7c8eaf, 0x687e9f, 0x9b6f6b, 0xb8a174, 0x668995, 0x8da9ba][i],
-              transparent: true,
-              opacity: 0.64,
-              side: THREE.DoubleSide,
-            })
-          : glass,
+      this.collision.add(x + side * (radius + 0.5), z, 1.65, 1.65);
+      const wallWidth = 13 - radius - 1.1;
+      const wing = this.assets.place(
+        g,
+        'wall_fragment',
+        side * (radius + 1.1 + wallWidth / 2),
+        0,
+        z,
       );
-      pane.position.set((i % 3) - 1, Math.floor(i / 3) * 1.6 - 0.8, 0.11);
-      group.add(pane);
+      wing.scale.x = wallWidth / 5;
+      this.collision.add(side * (radius + 1.1 + wallWidth / 2), z, wallWidth, 1.3);
     }
-    for (const yy of [-2.5, 0, 2.5]) box(group, m.lightStone, 0, yy, 0.1, 3.2, 0.15, 0.3);
-    const beam = new THREE.Mesh(
-      new THREE.ConeGeometry(2.2, 10, 4, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: 0xa9cbd8,
-        transparent: true,
-        opacity: 0.028,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending,
-      }),
-    );
-    beam.position.set(0, -2.8, 3);
-    beam.rotation.x = -0.57;
-    group.add(beam);
   }
   private statue(g: THREE.Group, x: number, z: number, scale = 1) {
-    const p = new THREE.Group();
-    p.position.set(x, 0, z);
-    p.scale.setScalar(scale);
-    g.add(p);
-    box(p, m.darkStone, 0, 0.3, 0, 1.8, 0.6, 1.6);
-    box(p, m.lightStone, 0, 0.66, 0, 1.6, 0.15, 1.4);
-    cylinder(p, m.stone, 0, 1.75, 0, 0.39, 0.65, 2, 7);
-    sphere(p, m.lightStone, 0, 3, 0, 0.37, 0.49, 0.33);
-    box(p, m.stone, -0.5, 2.14, 0.12, 0.3, 1.2, 0.35).rotation.z = -0.3;
-    box(p, m.stone, 0.5, 2.38, 0.12, 0.3, 0.63, 0.35).rotation.z = 0.3;
-    box(p, m.iron, -0.6, 1.5, 0.45, 0.065, 1.9, 0.07);
+    this.assets.place(g, 'sentinel_statue', x, 0, z, scale);
     this.collision.add(x, z, 1.8 * scale, 1.6 * scale);
   }
   private tree(g: THREE.Group, x: number, z: number, scale: number) {
-    const tree = new THREE.Group();
-    tree.position.set(x, 0, z);
-    tree.scale.setScalar(scale);
-    g.add(tree);
-    cylinder(tree, m.wood, 0, 1.5, 0, 0.17, 0.38, 3.1, 6).rotation.z = 0.12;
-    for (let i = 0; i < 8; i++) {
-      const branch = cylinder(
-        tree,
-        m.wood,
-        Math.sin(i * 2) * 0.65,
-        2.3 + i * 0.26,
-        Math.cos(i * 2) * 0.4,
-        0.015,
-        0.13,
-        1.7,
-        5,
-      );
-      branch.rotation.set(Math.cos(i) * 0.9, 0, Math.sin(i * 2) * 0.85);
-    }
+    this.assets.place(g, 'dead_tree', x, 0, z, scale);
     this.collision.add(x, z, 0.8, 0.8);
   }
   private torch(g: THREE.Group, x: number, y: number, z: number) {
-    cylinder(g, m.iron, x, y / 2, z, 0.055, 0.085, y);
-    cylinder(g, m.gold, x, y, z, 0.22, 0.08, 0.25);
+    const stand = this.assets.place(g, 'torch_stand', x, 0, z);
+    stand.scale.y = y / 1.8;
     const flame = sphere(this.group, m.fire, x, y + 0.37, z, 0.115, 0.34, 0.115);
     const glow = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -486,7 +328,8 @@ export class Castle {
   }
   private candle(g: THREE.Group, x: number, y: number, z: number) {
     const h = 0.25 + this.rng() * 0.45;
-    cylinder(g, m.bone, x, y + h / 2, z, 0.055, 0.075, h, 6);
+    const candle = this.assets.place(g, 'candle', x, y, z);
+    candle.scale.y = h / 0.49;
     sphere(g, m.fire, x, y + h + 0.065, z, 0.035, 0.09, 0.035);
     const glow = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -551,11 +394,10 @@ export class Castle {
   private makeShrine() {
     this.shrine.position.set(5, 0, -110);
     this.group.add(this.shrine);
-    cylinder(this.shrine, m.darkStone, 0, 0.17, 0, 1.4, 1.5, 0.34, 12);
-    cylinder(this.shrine, m.gold, 0, 0.38, 0, 0.8, 1, 0.18, 8);
-    const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.42), m.eye);
-    crystal.position.y = 1.3;
-    this.shrine.add(crystal);
+    const base = this.assets.clone('sanctuary');
+    this.shrine.add(base);
+    this.crystal = base.getObjectByName('sanctuary_crystal')!;
+    if (this.crystal instanceof THREE.Mesh) this.crystal.material = m.eye;
     const glow = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: this.glow,
@@ -622,9 +464,8 @@ export class Castle {
       if (gate.opened) gate.mesh.position.y = Math.max(-5, gate.mesh.position.y - dt * 2.2);
       gate.mesh.visible = gate.mesh.position.y > -4;
     }
-    const crystal = this.shrine.children[2];
-    crystal.rotation.y = time * 0.6;
-    crystal.position.y = 1.3 + Math.sin(time * 2) * 0.09;
+    this.crystal.rotation.y = time * 0.6;
+    this.crystal.position.y = 1.3 + Math.sin(time * 2) * 0.09;
     // Whole zones outside the camera corridor do not submit any render work.
     this.zoneGroups.forEach(
       (g, i) => (g.visible = playerZ < AREAS[i].z + 65 && playerZ > AREAS[i].end - 40),

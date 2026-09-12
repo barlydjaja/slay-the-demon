@@ -6,6 +6,7 @@ import { CollisionSystem } from './CollisionSystem';
 import { InputManager } from './InputManager';
 import { CameraController } from './CameraController';
 import { Castle } from '../world/Castle';
+import { CastleAssets } from '../world/CastleAssets';
 import { Effects } from '../world/Effects';
 import { WaterReflection } from '../world/WaterReflection';
 import { Lighting } from '../world/Lighting';
@@ -150,9 +151,12 @@ export class Game {
     }
   }
   private async buildCastle() {
+    this.hud.loading(30, 'Uncovering the old kingdom…');
+    await this.paint();
+    const assets = await CastleAssets.load();
     this.effects = new Effects();
     this.scene.add(this.effects.group);
-    this.castle = new Castle(this.collision);
+    this.castle = new Castle(this.collision, assets);
     this.scene.add(this.castle.group);
     this.lighting = new Lighting(this.scene, this.castle.torches);
     this.hud.loading(52, 'Waking the last machine…');

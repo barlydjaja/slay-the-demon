@@ -1,3 +1,4 @@
+import { loadCastleAssets } from './fixtures/castle-assets';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -148,9 +149,9 @@ function flood(c: CollisionSystem, start: { x: number; z: number }) {
   return (x: number, z: number) => visited.has(key(x, z));
 }
 
-test('boss exit remains sealed until its opening animation clears the doorway, and resets', () => {
+test('boss exit remains sealed until its opening animation clears the doorway, and resets', async () => {
   const c = new CollisionSystem(),
-    castle = new Castle(c);
+    castle = new Castle(c, await loadCastleAssets());
   assert.ok(c.blocked(0, -150, 0.47));
   assert.equal(canLeaveCastle(false, true, 0, -151.5), false);
   assert.equal(canLeaveCastle(true, false, 0, -151.5), false);
