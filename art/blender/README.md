@@ -51,3 +51,15 @@ python art/blender/make_review_sheets.py monsters
 The runtime library is `public/models/castle-creatures.glb` (about 0.93 MB). `monsters-manifest.json` records the measured bounds and mesh/triangle counts. Individual Cycles renders, including front and back Reaper views, are in `art/review/monsters/`. All four models and the Reaper's additional views were visually reviewed. Tests load the actual export, check geometry and ground contact, raycast the hood's opening, and exercise the animation pivots and combat mechanics.
 
 For local inspection, `?encounter=reaper` starts at the boss entrance; `?encounter=guardians` starts in the courtyard. Add `&attack=slash|heavy|hunt|lunge|sweep|eruption` to select the first boss attack or `&phase=2` to inspect the second phase. These routes are disabled in production. The ordinary journey still reaches the boss through the sanctuary and opens the Greenfields exit after victory.
+
+## Firstlight recovery components
+
+`firstlight-library.blend` contains the original sunwheel and copper winding for Mara’s restoration quest. `build_firstlight.py` creates an open-spoked brass gear with twelve teeth and a continuous copper coil with end plates, exports the runtime library, and renders both assets with Cycles.
+
+```sh
+blender --background --factory-startup --python art/blender/build_firstlight.py
+```
+
+The runtime export is `public/models/firstlight-kit.glb` (about 0.41 MB; no texture downloads). `firstlight-manifest.json` records geometry counts and bounds. Both studio renders in `art/review/firstlight/` were inspected; review corrections closed the gear tooth sides and separated adjacent coil turns. Tests verify finite mesh attributes, exported scale, ground clearance at the pickup animation’s lowest point, and the 0.5 MB budget.
+
+In development, use `?chapter=fields&view=mara`, `view=winding`, or `view=sunwheel` to inspect the quest locations. `view=repair` starts beside Mara with both parts recovered, ready for the homecoming conversation. These inspection routes are excluded from production and do not write to the normal journey save.

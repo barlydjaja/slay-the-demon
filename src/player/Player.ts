@@ -11,6 +11,7 @@ export class Player {
   position = this.model.group.position;
   health = 100;
   stamina = 100;
+  maxStamina = 100;
   facing = Math.PI;
   attackTimer = 0;
   attackId = 0;
@@ -106,7 +107,7 @@ export class Player {
     this.stamina = clamp(
       this.stamina + dt * (this.sprinting ? -24 : this.blocking ? 9 : 26),
       0,
-      100,
+      this.maxStamina,
     );
     this.model.group.rotation.y = angleDamp(this.model.group.rotation.y, this.facing, 22, dt);
     this.model.animate(
@@ -160,7 +161,7 @@ export class Player {
   reset(z = 11, x = 0) {
     this.position.set(x, this.collision.heightAt(x, z), z);
     this.health = 100;
-    this.stamina = 100;
+    this.stamina = this.maxStamina;
     this.deadTime = 0;
     this.attackTimer = 0;
     this.dodgeTimer = 0;

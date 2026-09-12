@@ -1,9 +1,12 @@
 import { DEFAULT_SETTINGS, AREAS, BOSS, type Settings, type Quality } from '../game/config';
+import { FIRSTLIGHT_PARTS, type FirstlightQuest } from '../progression/FirstlightQuest';
 import { GameState } from '../game/GameState';
 const crest = `<svg viewBox="0 0 48 60" fill="none" aria-hidden="true"><path d="M24 2 44 14v23L24 57 4 37V14L24 2Z" stroke="currentColor"/><path d="M24 9v34m-8-23 8-7 8 7M14 30l10 11 10-11M8 18l16 9 16-9" stroke="currentColor"/><path d="m24 43-4 5 4 5 4-5-4-5Z" fill="currentColor"/></svg>`;
 const robotIcon = `<svg viewBox="0 0 50 50" fill="none" aria-hidden="true"><path d="M24 6v6m-3-6h6" stroke="#b9bfaa" stroke-width="2"/><rect x="11" y="13" width="28" height="24" rx="7" fill="#658c9d"/><path d="M14 34h22" stroke="#a2b7bb" stroke-width="3"/><rect x="15" y="20" width="20" height="9" rx="3" fill="#14232e"/><path d="M20 23v3m10-3v3" stroke="#cdf3f1" stroke-width="2.5"/><path d="M7 20v10m36-10v10" stroke="#8198a1" stroke-width="3"/></svg>`;
 export interface UIActions {
   play: () => void;
+  journal?: () => void;
+  newJourney?: () => void;
   advance: () => void;
   leaveDialogue: () => void;
   resume: () => void;
@@ -34,10 +37,10 @@ export class HUD {
       <div class="vignette"></div><div class="screen-grain"></div><div class="frame"><i></i><i></i><i></i><i></i></div>
       <section id="loading" class="loading" aria-labelledby="load-title" aria-busy="true"><div class="loading-emblem"><div class="loading-orbit" aria-hidden="true"></div><div class="loading-seal">${crest}</div></div><p id="load-chapter" class="eyebrow">A FORGOTTEN KINGDOM</p><h1 id="load-title">THE LAST HOPE</h1><p id="load-label" role="status" aria-live="polite">Waking a forgotten machine…</p><div id="load-track" class="loading-track" role="progressbar" aria-label="Journey preparation" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="load-progress"></span></div><div class="loading-meta"><small id="load-percent">0%</small><span id="load-elapsed">0s elapsed</span></div><div class="loading-activity"><span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="load-activity">Preparing your journey</span></div><p id="load-reassurance" class="loading-reassurance">The next scene will open automatically when it is ready.</p></section>
       <header id="masthead" class="masthead hidden"><div class="brand">${crest}<span>THE LAST HOPE</span></div><div class="edition">AN INTERACTIVE TALE <span>VOL. 01</span></div></header>
-      <section id="menu" class="title-menu hidden"><p class="eyebrow"><span></span> IN THE SHADOW OF A FALLEN KINGDOM</p><h1><span>THE LAST</span><strong>HOPE</strong></h1><div class="title-rule"><i></i><b>✧</b><i></i></div><p class="tagline">A castle forgotten.<br>A demon awakened.<br><em>One machine remains.</em></p><div class="menu-buttons"><button id="play" class="play-button"><span class="button-glyph">⟡</span><span>BEGIN JOURNEY</span><span class="button-arrow">→</span></button><div class="secondary-buttons"><button id="menu-settings">SETTINGS</button><span>·</span><button id="credits-button">CREDITS</button></div></div><p class="save-note">A SHORT TALE OF COURAGE &amp; WHAT REMAINS</p></section>
+      <section id="menu" class="title-menu hidden"><p class="eyebrow"><span></span> IN THE SHADOW OF A FALLEN KINGDOM</p><h1><span>THE LAST</span><strong>HOPE</strong></h1><div class="title-rule"><i></i><b>✧</b><i></i></div><p class="tagline">A castle forgotten.<br>A demon awakened.<br><em>One machine remains.</em></p><div class="menu-buttons"><button id="play" class="play-button"><span class="button-glyph">⟡</span><span>BEGIN JOURNEY</span><span class="button-arrow">→</span></button><div class="secondary-buttons"><button id="menu-settings">SETTINGS</button><span>·</span><button id="credits-button">CREDITS</button><button id="new-journey" class="hidden">NEW JOURNEY</button></div></div><p id="journey-save-note" class="save-note">A SHORT TALE OF COURAGE &amp; WHAT REMAINS</p></section>
       <div id="scene-caption" class="scene-caption hidden"><span class="tiny-diamond"></span><div>THE FORGOTTEN GATE<small>AFTER THE RAIN, ONLY SILENCE.</small></div></div>
       <footer id="menu-footer" class="menu-footer hidden"><div><span class="keyboard-icon">⌨</span> DESIGNED FOR KEYBOARD &amp; MOUSE</div><button id="audio-toggle"><span id="audio-icon">♫</span> <span id="audio-label">SOUND ON</span></button><span class="version">CHAPTER I <i>/</i> THE HOLLOW KINGDOM</span></footer>
-      <section id="hud" class="hud hidden"><div class="player-status"><div class="portrait">${robotIcon}</div><div class="player-bars"><div class="player-label"><span>THE LAST MACHINE</span><span id="hp-number">100 <small>/ 100</small></span></div><div class="health-track"><div id="health-ghost"></div><div id="health-fill"></div></div><div class="stamina-track"><div id="stamina-fill"></div></div></div></div><div class="area-top"><span id="area-top-subtitle">CASTLE ENTRANCE</span><span id="area-top-name">The Forgotten Gate</span></div><div class="objective"><span>⟡</span><div><small id="objective-label">THE JOURNEY</small><p id="objective-text">Follow the light into the courtyard.</p></div></div><div class="control-strip"><div><kbd>W A S D</kbd><span>Move</span></div><div><kbd>SHIFT</kbd><span>Sprint</span></div><i></i><div><kbd>LMB</kbd><span>Strike</span></div><div id="block-control"><kbd>RMB</kbd><span>Block</span></div><div><kbd>SPACE</kbd><span>Evade</span></div></div><button id="pause-button" class="pause-control"><span>PAUSE</span><kbd>ESC</kbd></button></section>
+      <section id="hud" class="hud hidden"><div class="player-status"><div class="portrait">${robotIcon}</div><div class="player-bars"><div class="player-label"><span>THE LAST MACHINE</span><span id="hp-number">100 <small>/ 100</small></span></div><div class="health-track"><div id="health-ghost"></div><div id="health-fill"></div></div><div class="stamina-track"><div id="stamina-fill"></div></div></div></div><div class="area-top"><span id="area-top-subtitle">CASTLE ENTRANCE</span><span id="area-top-name">The Forgotten Gate</span></div><div class="objective"><span>⟡</span><div><small id="objective-label">THE JOURNEY</small><p id="objective-text">Follow the light into the courtyard.</p></div></div><div class="control-strip"><div><kbd>W A S D</kbd><span>Move</span></div><div><kbd>SHIFT</kbd><span>Sprint</span></div><i></i><div><kbd>LMB</kbd><span>Strike</span></div><div id="block-control"><kbd>RMB</kbd><span>Block</span></div><div><kbd>SPACE</kbd><span>Evade</span></div></div><button id="journal-button" class="journal-control hidden">JOURNAL <kbd>J</kbd></button><span id="save-indicator" class="save-indicator"></span><button id="pause-button" class="pause-control"><span>PAUSE</span><kbd>ESC</kbd></button></section>
       <div id="area-reveal" class="area-reveal hidden"><p class="eyebrow" id="area-reveal-subtitle"></p><h2 id="area-reveal-name"></h2><div class="title-rule"><i></i><b>✧</b><i></i></div></div>
       <div id="boss-ui" class="boss-ui hidden"><div class="boss-name"><i></i><span>THE HOODED REAPER</span><i></i></div><p>KEEPER OF THE HOLLOW THRONE</p><div class="boss-track"><div id="boss-ghost"></div><div id="boss-fill"></div></div><div id="boss-tell"></div></div>
       <div id="toast" class="toast hidden" role="status"></div><div id="memory" class="memory hidden"></div><div id="damage-flash"></div><div id="block-flash"></div>
@@ -48,10 +51,17 @@ export class HUD {
       <section id="death" class="modal-backdrop hidden"><div class="modal ending"><p class="eyebrow">EVEN SMALL LIGHTS FLICKER</p><h2>Not the end.</h2><p>The machine is silent.<br>But a little hope remains.</p><button id="retry" class="primary">AWAKEN AGAIN <span>→</span></button><button id="death-quit" class="text-button">RETURN TO TITLE</button><small id="checkpoint-note">Continue from your last sanctuary.</small></div></section>
       <section id="victory" class="modal-backdrop hidden"><div class="modal ending"><div class="modal-crest">${crest}</div><p class="eyebrow">THE DEMON HAS FALLEN.</p><h2>The Last Hope</h2><p>Humanity may be gone,<br>but its final creation remains.</p><div class="title-rule"><i></i><b>✧</b><i></i></div><p class="victory-line">And for the first time,<br>the silence feels like peace.</p><button id="play-again" class="primary">PLAY AGAIN <span>→</span></button><button id="victory-quit" class="text-button">RETURN TO TITLE</button></div></section>
       <div id="interaction" class="interaction hidden"><kbd>E</kbd><span id="interaction-text"></span></div>
-      <section id="story-dialogue" class="story-dialogue hidden" role="dialog" aria-modal="true" aria-labelledby="speaker-name" aria-describedby="dialogue-text"><div class="dialogue-ornament" aria-hidden="true">✧</div><div class="dialogue-heading"><div><p class="eyebrow">KEEPER OF FIRSTLIGHT</p><h2 id="speaker-name">Elder Rowan</h2></div><span id="dialogue-page"></span></div><p id="dialogue-text"></p><div class="dialogue-actions"><button id="dialogue-leave" class="text-button">LISTEN LATER <kbd>ESC</kbd></button><button id="dialogue-next" class="primary">CONTINUE <kbd>E</kbd></button></div></section>
+      <section id="story-dialogue" class="story-dialogue hidden" role="dialog" aria-modal="true" aria-labelledby="speaker-name" aria-describedby="dialogue-text"><div class="dialogue-ornament" aria-hidden="true">✧</div><div class="dialogue-heading"><div><p class="eyebrow" id="speaker-role">KEEPER OF FIRSTLIGHT</p><h2 id="speaker-name">Elder Rowan</h2></div><span id="dialogue-page"></span></div><p id="dialogue-text"></p><div class="dialogue-actions"><button id="dialogue-leave" class="text-button">LISTEN LATER <kbd>ESC</kbd></button><button id="dialogue-next" class="primary">CONTINUE <kbd>E</kbd></button></div></section>
+      <section id="journal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="journal-title"><div class="modal journal-modal"><button id="journal-close" class="close-modal" aria-label="Close journal">×</button><p class="eyebrow">FIELD NOTES · WORLD PAUSED</p><h2 id="journal-title">A light to come home to</h2><p id="journal-status" class="journal-status"></p><p id="journal-objective"></p><div class="journal-parts"><div><span id="winding-state" class="journal-check"></span><div><h3>Copper winding</h3><p>Beside the abandoned cart on the pond’s eastern bank.</p></div></div><div><span id="sunwheel-state" class="journal-check"></span><div><h3>Sunwheel</h3><p>Beneath the ruined arch, west of Firstlight.</p></div></div></div><blockquote id="journal-memory"></blockquote><div id="journal-reward" class="journal-reward"></div><p id="journal-world" class="journal-world"></p><p id="journal-save" class="modal-footnote"></p><button id="journal-return" class="primary">BACK TO THE WORLD <kbd>J</kbd></button></div></section>
+      <section id="new-journey-confirm" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="new-journey-title"><div class="modal"><p class="eyebrow">BEGIN AGAIN</p><h2 id="new-journey-title">A new journey?</h2><p>This replaces the saved Greenfields journey, including the restored mill and recovered memories. Your settings stay the same.</p><div class="modal-buttons"><button id="keep-journey" class="primary">KEEP MY JOURNEY</button><button id="confirm-new-journey">START A NEW JOURNEY</button></div></div></section>
       <div id="debug" class="debug hidden"></div><div class="desktop-notice"><div class="modal-crest">${crest}</div><h2>A journey for a bigger window.</h2><p>This experience is designed for desktop browsers.<br>Please use a keyboard and mouse.</p></div>`;
     this.root.querySelectorAll<HTMLElement>('[id]').forEach((el) => (this.elements[el.id] = el));
     this.on('play', actions.play);
+    for (const id of ['journal-button', 'journal-close', 'journal-return'])
+      this.on(id, () => actions.journal?.());
+    this.on('new-journey', () => this.show('new-journey-confirm'));
+    this.on('keep-journey', () => this.hide('new-journey-confirm'));
+    this.on('confirm-new-journey', () => actions.newJourney?.());
     this.on('dialogue-next', actions.advance);
     this.on('dialogue-leave', actions.leaveDialogue);
     this.on('resume', actions.resume);
@@ -137,6 +147,10 @@ export class HUD {
     this.show(this.modalFrom);
   }
   closeDialog() {
+    if (!this.el('new-journey-confirm').classList.contains('hidden')) {
+      this.hide('new-journey-confirm');
+      return true;
+    }
     if (!this.el('settings').classList.contains('hidden')) {
       this.closeSettings();
       return true;
@@ -169,6 +183,8 @@ export class HUD {
       'settings',
       'credits',
       'story-dialogue',
+      'journal',
+      'new-journey-confirm',
       'interaction',
     ])
       this.hide(id);
@@ -183,6 +199,10 @@ export class HUD {
     if ([GameState.PLAYING, GameState.BOSS_COMBAT, GameState.BOSS_DEAD].includes(state))
       this.show('hud');
     if (state === GameState.DIALOGUE) this.show('story-dialogue');
+    if (state === GameState.JOURNAL) {
+      this.show('journal');
+      this.el('journal-return').focus();
+    }
     if (state === GameState.LOADING || state === GameState.TRANSITION) this.show('loading');
     if (state === GameState.INTRO) this.show('intro');
     if (state === GameState.PAUSED) this.show('pause');
@@ -193,7 +213,8 @@ export class HUD {
       isMenu ||
       state === GameState.INTRO ||
       state === GameState.TRANSITION ||
-      state === GameState.DIALOGUE
+      state === GameState.DIALOGUE ||
+      state === GameState.JOURNAL
     ) {
       this.hide('memory');
       this.hide('toast');
@@ -240,10 +261,14 @@ export class HUD {
       this.el('load-reassurance').textContent = 'Your journey is ready.';
     }
   }
-  health(health: number, stamina: number, blocking: boolean) {
+  health(health: number, stamina: number, blocking: boolean, maxStamina = 100) {
     this.el('health-fill').style.width = health + '%';
     this.el('health-ghost').style.width = health + '%';
-    this.el('stamina-fill').style.width = stamina + '%';
+    this.el('stamina-fill').style.width = Math.min(100, (stamina / maxStamina) * 100) + '%';
+    this.el('stamina-fill').parentElement!.setAttribute(
+      'aria-label',
+      `Energy ${Math.ceil(stamina)} of ${maxStamina}`,
+    );
     this.el('hp-number').innerHTML = `${Math.ceil(health)} <small>/ 100</small>`;
     this.el('block-control').classList.toggle('active', blocking);
   }
@@ -266,11 +291,19 @@ export class HUD {
     this.show('area-reveal');
     this.areaTimer = 4.5;
   }
-  dialogue(text: string, index: number, total: number) {
+  dialogue(
+    text: string,
+    index: number,
+    total: number,
+    speaker = 'Elder Rowan',
+    role = 'KEEPER OF FIRSTLIGHT',
+    final = 'A NEW BEGINNING',
+  ) {
+    this.el('speaker-name').textContent = speaker;
+    this.el('speaker-role').textContent = role;
     this.el('dialogue-text').textContent = text;
     this.el('dialogue-page').textContent = `${index + 1} / ${total}`;
-    this.el('dialogue-next').innerHTML =
-      `${index === total - 1 ? 'A NEW BEGINNING' : 'CONTINUE'} <kbd>E</kbd>`;
+    this.el('dialogue-next').innerHTML = `${index === total - 1 ? final : 'CONTINUE'} <kbd>E</kbd>`;
     this.el('dialogue-next').focus({ preventScroll: true });
   }
   interaction(text: string) {
@@ -281,6 +314,7 @@ export class HUD {
     );
   }
   chapter(fields: boolean) {
+    this.el('journal-button').classList.toggle('hidden', !fields);
     document.body.classList.toggle('in-fields', fields);
     this.el('play').querySelectorAll('span')[1].textContent = fields
       ? 'RETURN TO THE GREENFIELDS'
@@ -294,6 +328,51 @@ export class HUD {
     this.root.querySelector('.tagline')!.innerHTML = fields
       ? 'Beyond the fallen kingdom.<br>A world begins again.<br><em>One machine will guard it.</em>'
       : 'A castle forgotten.<br>A demon awakened.<br><em>One machine remains.</em>';
+  }
+  continueAvailable(available: boolean) {
+    if (available) this.el('play').children[1].textContent = 'CONTINUE JOURNEY';
+    this.el('new-journey').classList.toggle('hidden', !available);
+    this.el('journey-save-note').textContent = available
+      ? 'YOUR GREENFIELDS JOURNEY IS SAVED IN THIS BROWSER'
+      : 'A SHORT TALE OF COURAGE & WHAT REMAINS';
+  }
+  saveStatus(status: 'saved' | 'unavailable' | 'preview') {
+    const text =
+      status === 'saved'
+        ? 'Journey saved · this browser'
+        : status === 'preview'
+          ? 'Local preview · progress is not saved'
+          : 'Session only · browser storage is unavailable';
+    this.el('save-indicator').textContent = text;
+    this.el('journal-save').textContent = text;
+  }
+  journal(quest: FirstlightQuest, remaining: number) {
+    this.el('journal-status').textContent = quest.restored
+      ? 'FIRSTLIGHT RESTORED'
+      : quest.ready
+        ? 'READY TO RETURN HOME'
+        : quest.accepted
+          ? 'MARA’S REQUEST'
+          : 'A VILLAGE WITH A QUIET MILL';
+    this.el('journal-objective').textContent = quest.objective();
+    for (const id of ['winding', 'sunwheel'] as const) {
+      this.el(`${id}-state`).textContent = quest.has(id) ? '✓' : '○';
+      this.el(`${id}-state`).setAttribute(
+        'aria-label',
+        quest.has(id)
+          ? `${FIRSTLIGHT_PARTS[id].name} recovered`
+          : `${FIRSTLIGHT_PARTS[id].name} to find`,
+      );
+    }
+    this.el('journal-memory').textContent = quest.has('sunwheel')
+      ? FIRSTLIGHT_PARTS.sunwheel.memory
+      : 'The old machines still hold the voices of those who cared for them.';
+    this.el('journal-reward').textContent = quest.restored
+      ? 'INSTALLED · Firstlight Capacitor · Maximum energy 120 (+20)'
+      : 'REWARD · Firstlight Capacitor · +20 maximum energy';
+    this.el('journal-reward').classList.toggle('installed', quest.restored);
+    this.el('journal-world').textContent =
+      `${remaining} creatures remain beyond the sanctuary. Recovered parts and repairs survive defeat.`;
   }
   objective(text: string, label = 'THE JOURNEY') {
     this.el('objective-text').textContent = text;

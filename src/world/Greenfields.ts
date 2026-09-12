@@ -1,5 +1,13 @@
 import * as THREE from 'three';
-import { CollisionSystem } from '../game/CollisionSystem';
+import { FirstlightAssets } from './FirstlightAssets';
+import {
+  FIRSTLIGHT_PARTS,
+  MARA_POSITION,
+  RESTORED_CHILD_POSITION,
+  type FirstlightPart,
+  type FirstlightQuest,
+} from '../progression/FirstlightQuest';
+import { CollisionSystem, type Obstacle } from '../game/CollisionSystem';
 import { seededRandom } from '../game/math';
 import { FieldAssets, type Placement } from './FieldAssets';
 import { ELDER_POSITION, FIELD_BOUNDS, FIELD_ENCOUNTERS, VILLAGE } from './GreenfieldsConfig';
@@ -29,12 +37,20 @@ export class Greenfields {
   elder!: THREE.Group;
   private rng = seededRandom(94172);
   private sails?: THREE.Object3D;
+  private restored = false;
+  private sailSpeed = 0;
+  private lastUpdate = -1;
+  private restoredProps = new THREE.Group();
+  private restoredObstacles: Obstacle[] = [];
+  private questMarker = new THREE.Group();
+  private pickups = new Map<FirstlightPart, THREE.Group>();
   private marker?: THREE.Mesh;
   private people: THREE.Group[] = [];
   private motes?: THREE.Points;
   private constructor(
     private collision: CollisionSystem,
     public assets: FieldAssets,
+    private components: FirstlightAssets,
   ) {
     this.group.name = 'The Greenfields · Blender landscape';
     collision.heightAt = assets.heightAt;
@@ -43,9 +59,14 @@ export class Greenfields {
     collision: CollisionSystem,
     report: (progress: number, label: string) => Promise<void>,
     library?: FieldAssets,
+    componentLibrary?: FirstlightAssets,
   ) {
     await report(31, 'Unpacking the meadow and its little details…');
-    const field = new Greenfields(collision, library ?? (await FieldAssets.load()));
+    const [assets, components] = await Promise.all([
+      library ?? FieldAssets.load(),
+      componentLibrary ?? FirstlightAssets.load(),
+    ]);
+    const field = new Greenfields(collision, assets, components);
     const stages: [number, string, () => void][] = [
       [38, 'Following the hills and winding paths…', () => field.terrain()],
       [43, 'Setting the old stones among the trees…', () => field.landmarks()],
@@ -53,6 +74,7 @@ export class Greenfields {
       [54, 'Growing the woodland at the edges…', () => field.woodland()],
       [60, 'Planting ferns, flowers, and meadow grass…', () => field.vegetation()],
       [65, 'Elder Rowan is waiting in the shade…', () => field.characters()],
+      [69, 'Remembering the voices of Firstlight…', () => field.firstlight()],
     ];
     for (const [progress, label, build] of stages) {
       await report(progress, label);
@@ -285,8 +307,110 @@ export class Greenfields {
     );
     this.group.add(this.motes);
   }
-  update(time: number) {
-    if (this.sails) this.sails.rotation.z = -time * 0.2;
+  private firstlight() {
+    this.put('cart', -18, 16.7, 0.7, 0.6);
+    this.collision.add(-18, 16.7, 1.6, 1.5);
+    const ringGeometry = new THREE.RingGeometry(0.6, 0.66, 40);
+    const glow = new THREE.MeshBasicMaterial({
+      color: 0xffd484,
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    for (const id of Object.keys(FIRSTLIGHT_PARTS) as FirstlightPart[]) {
+      const part = FIRSTLIGHT_PARTS[id],
+        group = new THREE.Group();
+      group.name = `Recoverable ${part.name}`;
+      group.position.set(part.x, this.assets.heightAt(part.x, part.z), part.z);
+      const mesh = this.components.clone(id);
+      mesh.name = 'floating-component';
+      group.add(mesh);
+      const ring = new THREE.Mesh(ringGeometry, glow);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.08;
+      group.add(ring);
+      this.group.add(group);
+      this.pickups.set(id, group);
+    }
+    const marker = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.13),
+      new THREE.MeshBasicMaterial({ color: 0xffd484 }),
+    );
+    this.questMarker.add(marker);
+    this.questMarker.position.set(
+      MARA_POSITION.x,
+      this.assets.heightAt(MARA_POSITION.x, MARA_POSITION.z) + 2.6,
+      MARA_POSITION.z,
+    );
+    this.group.add(this.questMarker);
+    this.restoredProps.name = 'Firstlight restored · supplies flowers and lanterns';
+    this.group.add(this.restoredProps);
+    this.restoredProps.visible = false;
+    for (const p of [
+      { x: 25, z: -34 },
+      { x: 25.7, z: -34.3 },
+    ])
+      this.assets.place(this.restoredProps, 'crate', { ...p, scale: 0.65 });
+    this.assets.place(this.restoredProps, 'barrel', { x: 26, z: -35.4, scale: 0.7 });
+    for (const [x, z, width, depth] of [
+      [25.35, -34.15, 1.2, 0.8],
+      [26, -35.4, 0.65, 0.65],
+      [13, -17, 0.2, 0.2],
+      [20, -17, 0.2, 0.2],
+    ]) {
+      const obstacle = this.collision.add(x, z, width, depth);
+      obstacle.active = false;
+      this.restoredObstacles.push(obstacle);
+    }
+    const blooms: Placement[] = [];
+    for (const [x, z] of [
+      [11, -15],
+      [13, -14],
+      [20, -16],
+      [23, -18],
+    ])
+      for (let i = 0; i < 5; i++)
+        blooms.push({
+          x: x + Math.sin(i * 2.4) * 0.7,
+          z: z + Math.cos(i * 2.4) * 0.5,
+          scale: 0.85,
+          yaw: i,
+        });
+    this.assets.scatter(this.restoredProps, 'wildflowers', blooms, false);
+    for (const x of [13, 20]) {
+      this.assets.place(this.restoredProps, 'lantern', { x, z: -17, scale: 0.85 });
+      const light = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(0.085),
+        new THREE.MeshBasicMaterial({ color: 0xffd18a, toneMapped: false }),
+      );
+      light.position.set(x, this.assets.heightAt(x, -17) + 1.65, -17);
+      this.restoredProps.add(light);
+    }
+  }
+  syncFirstlight(quest: FirstlightQuest) {
+    this.restored = quest.restored;
+    this.restoredProps.visible = quest.restored;
+    for (const obstacle of this.restoredObstacles) obstacle.active = quest.restored;
+    this.questMarker.visible = !quest.restored;
+    for (const [id, pickup] of this.pickups) pickup.visible = !quest.has(id);
+    if (quest.restored && this.people[2]) {
+      const p = RESTORED_CHILD_POSITION;
+      this.people[2].position.set(p.x, this.assets.heightAt(p.x, p.z), p.z);
+    }
+  }
+  update(time: number, player?: THREE.Vector3) {
+    const dt = this.lastUpdate < 0 ? 0 : Math.min(0.1, Math.max(0, time - this.lastUpdate));
+    this.lastUpdate = time;
+    this.sailSpeed += ((this.restored ? 0.25 : 0) - this.sailSpeed) * Math.min(1, dt * 0.8);
+    if (this.sails) this.sails.rotation.z -= dt * this.sailSpeed;
+    for (const [id, pickup] of this.pickups) {
+      if (!pickup.visible) continue;
+      const part = pickup.children[0];
+      part.position.y = 0.4 + Math.sin(time * 1.8 + (id === 'winding' ? 1 : 0)) * 0.08;
+      part.rotation.y = time * 0.45;
+    }
+    this.questMarker.rotation.y = time * 0.7;
     this.elder.rotation.y = 0.28 + Math.sin(time * 0.4) * 0.05;
     if (this.marker) {
       this.marker.position.y =
@@ -300,6 +424,14 @@ export class Greenfields {
     this.people.forEach(
       (person, i) => (person.rotation.y = Math.sin(time * 0.15 + i) * 0.6 + i * 1.5),
     );
+    if (player)
+      for (const person of this.people) {
+        if (person.position.distanceToSquared(player) < 25)
+          person.rotation.y = Math.atan2(
+            player.x - person.position.x,
+            player.z - person.position.z,
+          );
+      }
   }
   setStoryRead(read: boolean) {
     if (this.marker) this.marker.visible = !read;

@@ -10,6 +10,7 @@ export class AudioManager {
   private fields = false;
   private beat = 0;
   private elapsed = 0;
+  private millBeat = 0;
   async start() {
     if (this.ctx) {
       await this.ctx.resume();
@@ -201,7 +202,15 @@ export class AudioManager {
         break;
     }
   }
-  update(dt: number) {
+  update(dt: number, millPresence = 0) {
+    // Quiet timber creaks fade with distance from the repaired mill.
+    // Scheduling follows simulation time, so reading and pausing stay quiet.
+    this.millBeat -= dt;
+    if (this.fields && millPresence > 0 && this.millBeat <= 0) {
+      this.millBeat = 1.6;
+      this.tone(145, 0.42, 0.045 * millPresence, 'triangle', 93);
+      this.hiss(0.22, 0.12 * millPresence, 480);
+    }
     this.elapsed += dt;
     this.beat -= dt;
     if (this.beat > 0) return;

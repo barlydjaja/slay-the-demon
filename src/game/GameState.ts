@@ -2,6 +2,7 @@ export enum GameState {
   LOADING = 'LOADING',
   TRANSITION = 'TRANSITION',
   DIALOGUE = 'DIALOGUE',
+  JOURNAL = 'JOURNAL',
   MENU = 'MENU',
   INTRO = 'INTRO',
   PLAYING = 'PLAYING',

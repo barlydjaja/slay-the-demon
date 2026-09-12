@@ -15,6 +15,15 @@ import { Enemy } from '../enemies/Enemy';
 import { Boss } from '../enemies/Boss';
 import { CastleCreatureAssets } from '../enemies/CastleCreatureAssets';
 import { AudioManager } from '../audio/AudioManager';
+import {
+  FirstlightQuest,
+  FIRSTLIGHT_PARTS,
+  MARA_POSITION,
+  CHILD_POSITION,
+  RESTORED_CHILD_POSITION,
+  type FirstlightPart,
+} from '../progression/FirstlightQuest';
+import { JourneySave, type JourneySnapshot } from '../progression/JourneySave';
 import { HUD } from '../ui/HUD';
 import type { Greenfields } from '../world/Greenfields';
 import { FieldLighting } from '../world/FieldLighting';
@@ -50,6 +59,15 @@ export class Game {
   private storyRead = false;
   private elderGreeted = false;
   private storyPage = 0;
+  private firstlight = new FirstlightQuest();
+  private journeySave = new JourneySave();
+  private savedJourney = this.journeySave.load();
+  private preview = false;
+  private conversationPages: readonly string[] = [];
+  private conversationSpeaker = 'Elder Rowan';
+  private conversationRole = 'KEEPER OF FIRSTLIGHT';
+  private conversationEnd = 'A NEW BEGINNING';
+  private conversationDone?: () => void;
   private villageFound = false;
   private fieldArea = '';
   private allMonstersCleared = false;
@@ -81,6 +99,8 @@ export class Game {
     this.arenaSeal.active = false;
     this.hud = new HUD({
       play: () => this.play(),
+      journal: () => this.toggleJournal(),
+      newJourney: () => this.newJourney(),
       advance: () => this.advanceStory(),
       leaveDialogue: () => this.leaveStory(),
       resume: () => this.resume(),
@@ -101,6 +121,10 @@ export class Game {
     });
   }
   async init() {
+    const inspect = new URLSearchParams(location.search);
+    this.preview =
+      !!(import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV &&
+      (inspect.has('chapter') || inspect.has('encounter'));
     try {
       this.hud.loading(8, 'Finding a little light…');
       await this.paint();
@@ -131,6 +155,7 @@ export class Game {
       this.hud.loading(100, 'A kingdom is waiting.');
       await this.paint();
       this.changeState(GameState.MENU);
+      this.hud.continueAvailable(!this.preview && !!this.savedJourney);
       if (
         (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV &&
         new URLSearchParams(location.search).get('chapter') === 'fields'
@@ -140,6 +165,16 @@ export class Game {
         if (inspect === 'village') this.player.reset(-18, 16);
         if (inspect === 'ruins') this.player.reset(-25, -20);
         if (inspect === 'pond') this.player.reset(21, -18);
+        if (inspect === 'mara') this.player.reset(-17.5, 12);
+        if (inspect === 'winding') this.player.reset(14, -17);
+        if (inspect === 'sunwheel') this.player.reset(-26, -24);
+        if (inspect === 'repair') {
+          this.firstlight.accept();
+          this.firstlight.recover('winding');
+          this.firstlight.recover('sunwheel');
+          this.fields!.syncFirstlight(this.firstlight);
+          this.player.reset(-17.5, 12);
+        }
         this.camera.snap(this.player.position);
       }
       if ((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV) {
@@ -230,7 +265,7 @@ export class Game {
       throw error;
     }));
   }
-  private async enterFields() {
+  private async enterFields(saved?: JourneySnapshot | null) {
     if (this.state === GameState.TRANSITION || this.chapter === 'fields') return;
     this.changeState(GameState.TRANSITION);
     this.hud.loading(6, 'Beyond the hollow kingdom…');
@@ -284,6 +319,27 @@ export class Game {
         }
       }
       this.chapter = 'fields';
+      if (saved) {
+        this.allMonstersCleared = saved.defeated.length === FIELD_ENCOUNTERS.length;
+        this.storyRead = saved.storyRead;
+        this.elderGreeted = saved.elderGreeted;
+        this.villageFound = saved.villageFound;
+        this.firstlight = new FirstlightQuest(saved.firstlight);
+        this.enemies.forEach((enemy, i) => {
+          if (saved.defeated.includes(FIELD_ENCOUNTERS[i].id)) {
+            enemy.health = 0;
+            enemy.state = 'dead';
+            enemy.deadTime = 5;
+            enemy.model.group.visible = false;
+          }
+        });
+        const spawn = this.villageFound ? FIELD_CHECKPOINT : FIELD_SPAWN;
+        this.player.reset(spawn.z, spawn.x);
+      }
+      this.fields.setStoryRead(this.storyRead);
+      this.fields.syncFirstlight(this.firstlight);
+      this.player.maxStamina = this.firstlight.energyCapacity;
+      this.player.stamina = this.player.maxStamina;
       this.lastHealth = 100;
       this.checkpoint = false;
       this.camera.snap(this.player.position);
@@ -302,7 +358,10 @@ export class Game {
       this.hud.location('The Greenfields', 'CHAPTER II · A NEW BEGINNING');
       this.fieldArea = 'fields';
       this.hud.objective('An old man waits beneath the tree. Approach him.', 'BEYOND THE GATE');
-      this.hud.toast('CHAPTER II · Follow the meadow path.');
+      this.hud.toast(
+        saved ? 'WELCOME HOME · Your journey continues.' : 'CHAPTER II · Follow the meadow path.',
+      );
+      this.persistJourney();
       this.renderer.domElement.focus();
     } catch (error) {
       console.error('Could not load the Greenfields', error);
@@ -313,29 +372,174 @@ export class Game {
   }
   private startStory() {
     if (this.chapter !== 'fields' || !isGameplay(this.state)) return;
-    this.storyPage = 0;
     this.elderGreeted = true;
+    this.persistJourney();
+    this.startConversation(
+      ELDER_STORY,
+      'Elder Rowan',
+      'KEEPER OF FIRSTLIGHT',
+      'A NEW BEGINNING',
+      () => {
+        this.storyRead = true;
+        this.fields?.setStoryRead(true);
+        this.persistJourney();
+        this.hud.toast('Follow the sunflowers to Firstlight Village.');
+      },
+    );
+  }
+  private startConversation(
+    pages: readonly string[],
+    speaker: string,
+    role: string,
+    final: string,
+    done?: () => void,
+  ) {
+    if (!isGameplay(this.state)) return;
+    this.storyPage = 0;
+    this.conversationPages = pages;
+    this.conversationSpeaker = speaker;
+    this.conversationRole = role;
+    this.conversationEnd = final;
+    this.conversationDone = done;
     this.changeState(GameState.DIALOGUE);
     this.showStoryPage();
   }
+  private startMara() {
+    const repair = this.firstlight.ready,
+      accepted = this.firstlight.accepted;
+    this.startConversation(
+      this.firstlight.maraPages(),
+      'Mara',
+      'MILLWRIGHT OF FIRSTLIGHT',
+      repair ? 'BRING THE MILL TO LIFE' : accepted ? 'UNTIL NEXT TIME' : 'I’LL BRING THEM HOME',
+      () => {
+        if (repair && this.firstlight.restore()) {
+          this.fields!.syncFirstlight(this.firstlight);
+          this.player.maxStamina = this.firstlight.energyCapacity;
+          this.restAtWell();
+          this.audio.play('victory');
+          this.hud.location('Firstlight Restored', 'A LIGHT TO COME HOME TO');
+          this.hud.toast('FIRSTLIGHT CAPACITOR INSTALLED · +20 maximum energy');
+          this.hud.memory(
+            'The sails begin to turn. For a moment, the whole village stops to listen.',
+          );
+        } else if (!accepted) {
+          this.firstlight.accept();
+          this.hud.toast('MARA’S REQUEST · Two pieces of a heartbeat. [J] Journal');
+        }
+        this.persistJourney();
+      },
+    );
+  }
   private showStoryPage() {
-    this.hud.dialogue(ELDER_STORY[this.storyPage], this.storyPage, ELDER_STORY.length);
+    this.hud.dialogue(
+      this.conversationPages[this.storyPage],
+      this.storyPage,
+      this.conversationPages.length,
+      this.conversationSpeaker,
+      this.conversationRole,
+      this.conversationEnd,
+    );
   }
   private advanceStory() {
     if (this.state !== GameState.DIALOGUE) return;
     this.storyPage++;
-    if (this.storyPage >= ELDER_STORY.length) {
-      this.storyRead = true;
-      this.fields?.setStoryRead(true);
+    if (this.storyPage >= this.conversationPages.length) {
+      const done = this.conversationDone;
       this.leaveStory();
-      this.hud.toast('Follow the sunflowers to Firstlight Village.');
+      done?.();
     } else this.showStoryPage();
   }
   private leaveStory() {
     if (this.state !== GameState.DIALOGUE) return;
-    // Leaving early permits free exploration; E reopens the elder's tale.
+    this.conversationDone = undefined;
     this.changeState(GameState.PLAYING);
     this.renderer.domElement.focus();
+  }
+  private toggleJournal() {
+    if (this.state === GameState.JOURNAL) {
+      this.changeState(GameState.PLAYING);
+      this.audio.setPaused(false);
+      this.renderer.domElement.focus();
+    } else if (this.chapter === 'fields' && isGameplay(this.state)) {
+      this.hud.journal(this.firstlight, this.enemies.filter((enemy) => enemy.health > 0).length);
+      this.changeState(GameState.JOURNAL);
+      this.audio.setPaused(true);
+    }
+  }
+  private persistJourney() {
+    if (this.chapter !== 'fields') return;
+    if (this.preview) {
+      this.hud.saveStatus('preview');
+      return;
+    }
+    const snapshot: JourneySnapshot = {
+      version: 1,
+      chapter: 'fields',
+      storyRead: this.storyRead,
+      elderGreeted: this.elderGreeted,
+      villageFound: this.villageFound,
+      firstlight: this.firstlight.snapshot(),
+      defeated: this.enemies.flatMap((enemy, i) =>
+        enemy.health <= 0 ? [FIELD_ENCOUNTERS[i].id] : [],
+      ),
+    };
+    const saved = this.journeySave.save(snapshot);
+    this.savedJourney = snapshot;
+    this.hud.saveStatus(saved ? 'saved' : 'unavailable');
+    this.hud.continueAvailable(saved);
+  }
+  private newJourney() {
+    if (!this.journeySave.clear()) {
+      this.hud.toast('The saved journey could not be replaced. Browser storage is unavailable.');
+      return;
+    }
+    location.href = location.pathname;
+  }
+  private fieldInteraction(): 'elder' | 'mara' | 'child' | 'well' | FirstlightPart | null {
+    const p = this.player.position;
+    if (Math.hypot(p.x - ELDER_POSITION.x, p.z - ELDER_POSITION.z) < 4.8) return 'elder';
+    if (Math.hypot(p.x - MARA_POSITION.x, p.z - MARA_POSITION.z) < 2.8) return 'mara';
+    const child = this.firstlight.restored ? RESTORED_CHILD_POSITION : CHILD_POSITION;
+    if (Math.hypot(p.x - child.x, p.z - child.z) < 2.6) return 'child';
+    for (const id of Object.keys(FIRSTLIGHT_PARTS) as FirstlightPart[]) {
+      const part = FIRSTLIGHT_PARTS[id];
+      if (!this.firstlight.has(id) && Math.hypot(p.x - part.x, p.z - part.z) < 2.4) return id;
+    }
+    if (Math.hypot(p.x - VILLAGE.x, p.z - VILLAGE.z) < 3.8) return 'well';
+    return null;
+  }
+  private interactFields() {
+    const target = this.fieldInteraction();
+    if (target === 'elder') this.startStory();
+    else if (target === 'mara') this.startMara();
+    else if (target === 'child')
+      this.startConversation(
+        [
+          this.firstlight.restored
+            ? 'It’s turning! Mara says tomorrow we can make bread shaped like your little head. You will stay for breakfast, won’t you?'
+            : 'Mara watches the mill every morning. I think she’s waiting for it to remember how to turn. Can machines remember things?',
+        ],
+        'Pip',
+        'A CHILD OF FIRSTLIGHT',
+        'UNTIL NEXT TIME',
+      );
+    else if (target === 'well') this.restAtWell();
+    else if (target && this.firstlight.recover(target)) {
+      this.fields!.syncFirstlight(this.firstlight);
+      this.audio.play('heal');
+      this.effects.burst(
+        this.player.position.x,
+        this.player.position.y + 1,
+        this.player.position.z,
+        0xffd58c,
+        15,
+        2,
+      );
+      this.hud.toast(`${FIRSTLIGHT_PARTS[target].name.toUpperCase()} RECOVERED · [J] Journal`);
+      this.hud.memory(FIRSTLIGHT_PARTS[target].memory);
+      this.persistJourney();
+    }
   }
   private paint() {
     // A single rAF resumes before paint and can leave the previous percentage
@@ -409,6 +613,10 @@ export class Game {
     void this.audio
       .start()
       .catch(() => this.hud.toast('Sound is unavailable. The journey can continue.'));
+    if (this.chapter !== 'fields' && this.savedJourney && !this.preview) {
+      void this.enterFields(this.savedJourney);
+      return;
+    }
     if (this.chapter === 'fields') {
       this.audio.setPaused(false);
       this.changeState(GameState.PLAYING);
@@ -500,13 +708,16 @@ export class Game {
       requestAnimationFrame(this.tick);
       return;
     }
-    if (this.state !== GameState.PAUSED) this.time += dt;
+    if (![GameState.PAUSED, GameState.JOURNAL, GameState.DIALOGUE].includes(this.state))
+      this.time += dt;
+    if (this.input.consume('KeyJ')) this.toggleJournal();
     if (this.input.consume('F3')) this.debugEnabled = !this.debugEnabled;
     if (this.input.consume('Escape')) {
       if (!this.hud.closeDialog()) {
         if (this.state === GameState.PAUSED) this.resume();
         else if (this.state === GameState.INTRO) this.skipIntro();
         else if (this.state === GameState.DIALOGUE) this.leaveStory();
+        else if (this.state === GameState.JOURNAL) this.toggleJournal();
         else this.pause();
       }
     }
@@ -537,8 +748,8 @@ export class Game {
         this.hud.memory('Beyond the throne, a warm breeze. Beyond the walls… life.');
       }
     }
-    if (this.state !== GameState.PAUSED) {
-      this.fields?.update(this.time);
+    if (![GameState.PAUSED, GameState.JOURNAL, GameState.DIALOGUE].includes(this.state)) {
+      this.fields?.update(this.time, this.player.position);
       this.castle?.update(this.time, dt, this.player.position.z);
       this.effects.update(dt, this.time, this.player.position.z);
       this.lighting.update(
@@ -550,7 +761,14 @@ export class Game {
         this.state === GameState.VICTORY || this.state === GameState.BOSS_DEAD,
       );
       if (this.lighting.lightning) this.audio.play('thunder');
-      this.audio.update(dt);
+      const millPresence =
+        this.chapter === 'fields' && this.firstlight.restored
+          ? Math.max(
+              0,
+              1 - Math.hypot(this.player.position.x - 29, this.player.position.z + 36) / 34,
+            )
+          : 0;
+      this.audio.update(dt, millPresence);
     }
     this.camera.update(
       dt,
@@ -581,14 +799,8 @@ export class Game {
           this.player.position.z - ELDER_POSITION.z,
         ) < 4.8;
       if (this.input.consume('KeyE')) {
-        if (nearElder) {
-          this.startStory();
-          return;
-        }
-        if (
-          Math.hypot(this.player.position.x - VILLAGE.x, this.player.position.z - VILLAGE.z) < 3.8
-        )
-          this.restAtWell();
+        this.interactFields();
+        if (!isGameplay(this.state)) return;
       }
       if (nearElder && !this.elderGreeted) {
         this.startStory();
@@ -611,7 +823,10 @@ export class Game {
       enemy.model.group.visible = near && enemy.deadTime < 4;
       if (!near) continue;
       enemy.update(dt, this.time, this.player, this.camera.camera);
-      if (enemy.tryHit(this.player)) this.camera.shake = 0.19;
+      if (enemy.tryHit(this.player)) {
+        this.camera.shake = 0.19;
+        if (enemy.health <= 0 && this.chapter === 'fields') this.persistJourney();
+      }
     }
     if (this.boss && (this.player.position.z < -108 || this.boss.active)) {
       this.boss.update(dt, this.time, this.player);
@@ -632,13 +847,18 @@ export class Game {
       this.uiTime = 0.07;
       if (this.chapter === 'castle') this.progress();
       else this.fieldProgress();
-      this.hud.health(this.player.health, this.player.stamina, this.player.blocking);
+      this.hud.health(
+        this.player.health,
+        this.player.stamina,
+        this.player.blocking,
+        this.player.maxStamina,
+      );
       if (this.boss?.active) this.hud.boss(this.boss.health, this.boss.tell);
     }
   }
   private restAtWell() {
     this.player.health = 100;
-    this.player.stamina = 100;
+    this.player.stamina = this.player.maxStamina;
     this.lastHealth = 100;
     this.audio.play('heal');
     this.effects.burst(this.player.position.x, 1, this.player.position.z, 0xffe3a3, 25, 2);
@@ -660,6 +880,7 @@ export class Game {
       this.restAtWell();
       this.hud.toast('FIRSTLIGHT FOUND · Health restored · Village checkpoint reached');
       this.hud.memory('A child laughs somewhere beyond the roofs. The machine pauses to listen.');
+      this.persistJourney();
     }
     const remaining = this.enemies.filter((e) => e.health > 0).length;
     if (!remaining && !this.allMonstersCleared) {
@@ -668,20 +889,29 @@ export class Game {
       this.hud.toast('THE FIELDS ARE QUIET · Firstlight will see another dawn.');
     }
     this.hud.objective(
-      !this.storyRead
-        ? 'Speak with Elder Rowan by the old tree.'
-        : !this.villageFound
-          ? 'Follow the sunflowers to Firstlight Village.'
-          : remaining
-            ? `Guard the new beginning. ${remaining} creatures roam the fields.`
-            : 'The village is safe. Explore the world you have protected.',
-      village ? 'FIRSTLIGHT SANCTUARY' : 'HUMANITY’S LAST HOPE',
+      this.firstlight.accepted || this.villageFound
+        ? this.firstlight.objective()
+        : !this.storyRead
+          ? 'Speak with Elder Rowan by the old tree.'
+          : 'Follow the sunflowers to Firstlight Village.',
+      this.firstlight.restored
+        ? 'FIRSTLIGHT RESTORED'
+        : this.firstlight.accepted
+          ? 'A LIGHT TO COME HOME TO'
+          : village
+            ? 'FIRSTLIGHT SANCTUARY'
+            : 'HUMANITY’S LAST HOPE',
     );
-    const nearElder = Math.hypot(p.x - ELDER_POSITION.x, p.z - ELDER_POSITION.z) < 4.8;
-    const nearWell = Math.hypot(p.x - VILLAGE.x, p.z - VILLAGE.z) < 3.8;
-    this.hud.interaction(
-      nearElder ? 'Speak with Elder Rowan' : nearWell ? 'Rest at the village well' : '',
-    );
+    const target = this.fieldInteraction();
+    const labels = {
+      elder: 'Speak with Elder Rowan',
+      mara: this.firstlight.ready ? 'Return the components to Mara' : 'Speak with Mara',
+      child: 'Speak with Pip',
+      well: 'Rest at the village well',
+      winding: 'Recover copper winding',
+      sunwheel: 'Recover sunwheel',
+    };
+    this.hud.interaction(target ? labels[target] : '');
   }
   private progress() {
     if (!this.castle || !this.boss) return;

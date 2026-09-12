@@ -1,3 +1,11 @@
+import {
+  FirstlightQuest,
+  FIRSTLIGHT_PARTS,
+  MARA_POSITION,
+} from '../src/progression/FirstlightQuest';
+import { JourneySave } from '../src/progression/JourneySave';
+import { FirstlightAssets } from '../src/world/FirstlightAssets';
+import { loadFirstlightAssets } from './fixtures/firstlight-assets';
 import { loadCastleAssets } from './fixtures/castle-assets';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -52,6 +60,7 @@ async function testAssets() {
   return new FieldAssets(gltf.scene);
 }
 FieldAssets.load = testAssets;
+FirstlightAssets.load = loadFirstlightAssets;
 
 test('every Blender prefab has finite geometry, vertex colors, UVs and usable animation pivots', async () => {
   const assets = await testAssets();
@@ -178,6 +187,8 @@ test('the meadow entrance, elder, well, checkpoint and every monster are reachab
     FIELD_CHECKPOINT,
     { x: 0, z: ELDER_POSITION.z },
     { x: 16, z: -19 },
+    { x: MARA_POSITION.x, z: MARA_POSITION.z + 1.5 },
+    ...Object.values(FIRSTLIGHT_PARTS),
     ...FIELD_ENCOUNTERS,
   ]) {
     assert.equal(c.blocked(p.x, p.z, 0.47), false, `spawn blocked at ${p.x},${p.z}`);
@@ -280,6 +291,10 @@ function gameHarness() {
     scene: oldScene,
     time: 0,
     storyPage: 0,
+    firstlight: new FirstlightQuest(),
+    journeySave: new JourneySave(),
+    savedJourney: null,
+    preview: true,
     storyRead: false,
     elderGreeted: false,
     villageFound: false,
@@ -298,6 +313,10 @@ function gameHarness() {
         loadingProgress.push(progress);
       },
       chapter() {},
+      memory() {},
+      saveStatus() {},
+      continueAvailable() {},
+      journal() {},
       location() {},
       objective() {},
       toast(t: string) {
@@ -384,5 +403,123 @@ test('death in the fields respawns at the village without reviving defeated mons
   game.play();
   assert.equal(game.state, GameState.PLAYING);
   assert.equal(game.chapter, 'fields');
+  disposeScene(game.scene);
+});
+
+test('Mara repair changes the world once, pauses safely, and survives retry and saved chapter loading', async () => {
+  const { game } = gameHarness();
+  let raw: string | null = null;
+  let writes = 0;
+  const storage = {
+    getItem: () => raw,
+    setItem: (_: string, value: string) => {
+      raw = value;
+      writes++;
+    },
+    removeItem: () => {
+      raw = null;
+    },
+  };
+  game.preview = false;
+  game.journeySave = new JourneySave(storage);
+  await game.enterFields();
+  const sails = game.fields.group.getObjectByName('windmill_sails');
+  const still = sails.rotation.z;
+  game.fields.update(1);
+  assert.equal(sails.rotation.z, still);
+  game.startMara();
+  game.leaveStory();
+  assert.equal(game.firstlight.accepted, false, 'leaving early must not commit a quest');
+  for (const id of ['sunwheel', 'winding'] as const) {
+    const part = FIRSTLIGHT_PARTS[id];
+    game.player.reset(part.z, part.x);
+    game.interactFields();
+    assert.equal(game.firstlight.has(id), true);
+    assert.equal(game.fields.group.getObjectByName(`Recoverable ${part.name}`).visible, false);
+    const count = writes;
+    game.interactFields();
+    assert.equal(writes, count, 'duplicate recovery must not save again');
+  }
+  const finish = () => {
+    while (game.state === GameState.DIALOGUE) game.advanceStory();
+  };
+  game.player.reset(MARA_POSITION.z + 1.5, MARA_POSITION.x);
+  game.interactFields();
+  finish();
+  assert.equal(game.firstlight.ready, true);
+  game.interactFields();
+  game.leaveStory();
+  assert.equal(game.firstlight.restored, false, 'leaving turn-in early must not award the upgrade');
+  game.interactFields();
+  finish();
+  assert.equal(game.firstlight.restored, true);
+  assert.equal(game.player.maxStamina, 120);
+  assert.equal(game.player.stamina, 120);
+  assert.equal(
+    game.collision.blocked(25.35, -34.15, 0.47),
+    true,
+    'restored supplies must have collision',
+  );
+  const restoredPaths = flood(game.collision, FIELD_CHECKPOINT);
+  for (const p of [FIELD_CHECKPOINT, { x: 16, z: -19 }, { x: 12, z: -17.5 }, { x: 18, z: -20 }]) {
+    assert.equal(game.collision.blocked(p.x, p.z, 0.47), false);
+    assert.ok(restoredPaths(p.x, p.z), 'repair must preserve village access');
+  }
+  assert.equal(
+    game.fields.group.getObjectByName('Firstlight restored · supplies flowers and lanterns')
+      .visible,
+    true,
+  );
+  game.fields.update(1.05);
+  assert.ok(sails.rotation.z < still);
+  game.interactFields();
+  finish();
+  assert.equal(game.player.maxStamina, 120);
+  game.toggleJournal();
+  assert.equal(game.state, GameState.JOURNAL);
+  assert.equal(isGameplay(game.state), false);
+  assert.equal(game.input.enabled, false);
+  game.toggleJournal();
+  assert.equal(game.state, GameState.PLAYING);
+  assert.equal(game.input.enabled, true);
+  game.player.stamina = 119.9;
+  game.player.update(0.05, 2, { down: () => false, consume: () => false } as any, null);
+  assert.equal(game.player.stamina, 120, 'regeneration must use the upgraded capacity');
+  game.storyRead = true;
+  game.elderGreeted = true;
+  game.villageFound = true;
+  game.enemies[0].health = 0;
+  game.enemies[0].state = 'dead';
+  game.persistJourney();
+  game.audio.start = async () => {};
+  game.player.health = 0;
+  game.state = GameState.PLAYER_DEAD;
+  game.restart();
+  assert.equal(game.player.stamina, 120);
+  const resumed = gameHarness().game;
+  await resumed.enterFields(new JourneySave(storage).load());
+  assert.equal(resumed.player.maxStamina, 120);
+  assert.equal(resumed.player.stamina, 120);
+  assert.equal(resumed.player.position.x, FIELD_CHECKPOINT.x);
+  assert.equal(resumed.player.position.z, FIELD_CHECKPOINT.z);
+  assert.equal(resumed.storyRead, true);
+  assert.equal(resumed.firstlight.restored, true);
+  assert.equal(resumed.enemies[0].state, 'dead');
+  assert.equal(resumed.enemies[0].model.group.visible, false);
+  assert.ok(writes < 12, `unexpected repeated writes: ${writes}`);
+  disposeScene(game.scene);
+  disposeScene(resumed.scene);
+});
+
+test('inspection routes never overwrite normal journey progress', async () => {
+  const { game } = gameHarness();
+  game.journeySave = {
+    save() {
+      assert.fail('preview attempted a storage write');
+    },
+  };
+  await game.enterFields();
+  game.firstlight.accept();
+  game.persistJourney();
   disposeScene(game.scene);
 });

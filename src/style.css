@@ -1653,3 +1653,133 @@ kbd {
     animation: none !important;
   }
 }
+
+/* A quiet field journal that keeps the world behind it. */
+.journal-control {
+  position: absolute;
+  left: 50px;
+  top: 136px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--gold);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  pointer-events: auto;
+}
+.journal-control kbd,
+.journal-modal kbd {
+  border: 1px solid var(--line);
+  padding: 3px 6px;
+  font: inherit;
+}
+.save-indicator {
+  position: absolute;
+  right: 42px;
+  bottom: 91px;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: #a9b9b3;
+}
+.journal-modal {
+  width: min(620px, calc(100vw - 56px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  text-align: left;
+  padding: 35px 40px;
+}
+.journal-modal h2 {
+  font-size: 29px;
+  margin-bottom: 12px;
+}
+.journal-modal > p:not(.eyebrow) {
+  line-height: 1.7;
+}
+.journal-status {
+  color: #d9bd7d !important;
+  font-size: 10px !important;
+  letter-spacing: 0.16em;
+  margin: 0 0 10px;
+}
+#journal-objective {
+  font-size: 13px;
+  color: #c2cbc4;
+}
+.journal-parts {
+  margin: 22px 0;
+  border-top: 1px solid var(--line);
+}
+.journal-parts > div {
+  display: flex;
+  gap: 15px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+}
+.journal-check {
+  font-size: 21px;
+  color: #abd6c4;
+  width: 24px;
+  flex: 0 0 24px;
+}
+.journal-parts h3 {
+  font: 15px var(--serif);
+  color: #e4d9bb;
+  margin: 0 0 5px;
+}
+.journal-parts p {
+  color: #aebeb7;
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 0;
+}
+#journal-memory {
+  margin: 20px 0;
+  padding-left: 17px;
+  border-left: 2px solid #7c9186;
+  font-size: 12px;
+  color: #b6c4ba;
+  font-style: italic;
+  line-height: 1.8;
+}
+.journal-reward {
+  padding: 14px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--gold);
+  line-height: 1.6;
+}
+.journal-reward.installed {
+  border-color: #668e7c;
+  color: #bce4ce;
+  background: #223b3544;
+}
+.journal-world {
+  font-size: 11px;
+  color: #96aca4;
+}
+.journal-modal .modal-footnote {
+  margin: 12px 0 20px;
+  font-size: 10px;
+}
+.journal-modal .primary {
+  width: 100%;
+}
+#new-journey-confirm {
+  z-index: 60;
+}
+#new-journey-confirm .modal p:not(.eyebrow) {
+  line-height: 1.8;
+  font-size: 13px;
+  color: #bdc7c4;
+}
+@media (max-height: 740px) {
+  .journal-modal {
+    padding: 25px 32px;
+  }
+  .journal-parts {
+    margin: 14px 0;
+  }
+  .journal-parts > div {
+    padding: 10px 0;
+  }
+}

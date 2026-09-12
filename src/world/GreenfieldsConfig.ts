@@ -4,19 +4,19 @@ export const ELDER_POSITION = { x: -3.4, z: 27 };
 export const VILLAGE = { x: 16, z: -23, radius: 15 };
 export const FIELD_CHECKPOINT = { x: 16, z: -15 };
 export type FieldMonster = 'wolf' | 'golem' | 'thornling';
-export const FIELD_ENCOUNTERS: { type: FieldMonster; x: number; z: number }[] = [
-  { type: 'thornling', x: -9, z: 10 },
-  { type: 'wolf', x: 17, z: 9 },
-  { type: 'wolf', x: 23, z: 3 },
-  { type: 'thornling', x: -18, z: 1 },
-  { type: 'golem', x: -22, z: -10 },
-  { type: 'wolf', x: -11, z: -17 },
-  { type: 'thornling', x: -27, z: -25 },
-  { type: 'golem', x: -14, z: -36 },
-  { type: 'wolf', x: -22, z: -44 },
-  { type: 'thornling', x: 2, z: -49 },
-  { type: 'wolf', x: 14, z: -52 },
-  { type: 'golem', x: 28, z: -51 },
+export const FIELD_ENCOUNTERS: { id: string; type: FieldMonster; x: number; z: number }[] = [
+  { id: 'briar-path', type: 'thornling', x: -9, z: 10 },
+  { id: 'east-wolf', type: 'wolf', x: 17, z: 9 },
+  { id: 'east-pack', type: 'wolf', x: 23, z: 3 },
+  { id: 'pond-thorn', type: 'thornling', x: -18, z: 1 },
+  { id: 'western-golem', type: 'golem', x: -22, z: -10 },
+  { id: 'ruin-wolf', type: 'wolf', x: -11, z: -17 },
+  { id: 'arch-thorn', type: 'thornling', x: -27, z: -25 },
+  { id: 'northern-golem', type: 'golem', x: -14, z: -36 },
+  { id: 'ridge-wolf', type: 'wolf', x: -22, z: -44 },
+  { id: 'far-thorn', type: 'thornling', x: 2, z: -49 },
+  { id: 'far-wolf', type: 'wolf', x: 14, z: -52 },
+  { id: 'far-golem', type: 'golem', x: 28, z: -51 },
 ];
 export function inVillage(x: number, z: number) {
   return Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < VILLAGE.radius;
