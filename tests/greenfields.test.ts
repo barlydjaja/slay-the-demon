@@ -52,6 +52,66 @@ async function testAssets() {
 }
 FieldAssets.load = testAssets;
 
+test('every Blender prefab has finite geometry, vertex colors, UVs and usable animation pivots', async () => {
+  const assets = await testAssets();
+  const manifest = JSON.parse(
+    await readFile(new URL('../art/blender/asset-manifest.json', import.meta.url), 'utf8'),
+  );
+  assert.equal(Object.keys(manifest).length, 35);
+  for (const name of Object.keys(manifest)) {
+    const root = assets.clone(name);
+    let meshCount = 0;
+    root.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      meshCount++;
+      const { position, normal, color, uv } = object.geometry.attributes;
+      assert.ok(position && normal && color && uv, `${name}: missing vertex attributes`);
+      assert.equal(color.count, position.count, `${name}: incomplete paint`);
+      assert.equal(uv.count, position.count, `${name}: incomplete UVs`);
+      for (const value of position.array)
+        assert.ok(Number.isFinite(value), `${name}: invalid vertex`);
+    });
+    assert.ok(meshCount > 0, `${name}: empty model`);
+  }
+  for (const name of ['wolf', 'golem', 'thornling']) {
+    const creature = assets.clone(name);
+    for (const part of ['body', 'head', 'limb_0', 'limb_1']) {
+      assert.ok(creature.getObjectByName(`${name}_${part}`), `${name}: missing ${part} pivot`);
+    }
+  }
+  assert.ok(assets.clone('windmill').getObjectByName('windmill_sails'));
+});
+
+test('movement follows the actual Blender terrain triangles across the meadow and village', async () => {
+  const assets = await testAssets();
+  const terrain = assets.clone('terrain');
+  terrain.updateMatrixWorld(true);
+  const collision = new CollisionSystem(FIELD_BOUNDS);
+  collision.heightAt = assets.heightAt;
+  for (const [x, z] of [
+    [-31.7, 12.2],
+    [0.3, 31.6],
+    [18.8, 4.3],
+    [-24.2, -32.6],
+    [16.2, -18.5],
+    [7.4, -56.8],
+  ]) {
+    const ray = new THREE.Raycaster(new THREE.Vector3(x, 50, z), new THREE.Vector3(0, -1, 0));
+    const hit = ray.intersectObject(terrain, true)[0];
+    assert.ok(hit, `missing terrain at ${x},${z}`);
+    assert.ok(
+      Math.abs(hit.point.y - assets.heightAt(x, z)) < 0.0002,
+      `feet disagree with surface at ${x},${z}`,
+    );
+    const position = new THREE.Vector3(x - 0.2, 0, z);
+    collision.move(position, 0.2, 0, 0.47);
+    assert.ok(
+      Math.abs(position.y - hit.point.y) < 0.0002,
+      `movement left the surface at ${x},${z}`,
+    );
+  }
+});
+
 function flood(c: CollisionSystem, start: { x: number; z: number }) {
   const minX = -c.bounds.halfWidth,
     minZ = c.bounds.minZ;

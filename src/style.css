@@ -27,6 +27,9 @@ body,
 }
 body {
   min-width: 320px;
+  cursor:
+    url('./ui/cursors/neon-pointer.svg') 10 7,
+    auto;
 }
 button,
 input,
@@ -34,7 +37,9 @@ select {
   font: inherit;
 }
 button {
-  cursor: pointer;
+  cursor:
+    url('./ui/cursors/neon-pointer.svg') 10 7,
+    pointer;
   color: inherit;
   background: none;
   border: none;
@@ -69,7 +74,9 @@ button:active {
   outline: none;
 }
 .in-game #game {
-  cursor: crosshair;
+  cursor:
+    url('./ui/cursors/neon-aim.svg') 24 24,
+    crosshair;
 }
 #ui {
   position: fixed;

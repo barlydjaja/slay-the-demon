@@ -720,7 +720,7 @@ export class Game {
       triangles: number;
     };
     this.hud.debug(
-      `${this.rendererName}  |  ${Math.round(this.fps)} FPS\nDraw calls  ${info.calls ?? info.drawCalls ?? 0}\nTriangles   ${info.triangles.toLocaleString()}\nResolution  ${this.resolutionScale.toFixed(2)}×\nPlayer      ${this.player.position.x.toFixed(1)}, ${this.player.position.z.toFixed(1)}\nHealth      ${this.player.health} / 100\nBoss HP     ${this.boss?.health ?? '—'} / ${BOSS.health}\nBoss state  ${this.boss?.state ?? 'Greenfields'}\nAggro       ${BOSS_AGGRO_DISTANCE} units\nGame state  ${this.state}`,
+      `${this.rendererName}  |  ${Math.round(this.fps)} FPS\nDraw calls  ${info.drawCalls ?? info.calls ?? 0}\nTriangles   ${info.triangles.toLocaleString()}\nResolution  ${this.resolutionScale.toFixed(2)}×\nPlayer      ${this.player.position.x.toFixed(1)}, ${this.player.position.z.toFixed(1)}\nHealth      ${this.player.health} / 100\nBoss HP     ${this.boss?.health ?? '—'} / ${BOSS.health}\nBoss state  ${this.boss?.state ?? 'Greenfields'}\nAggro       ${BOSS_AGGRO_DISTANCE} units\nGame state  ${this.state}`,
       this.debugEnabled,
     );
   }

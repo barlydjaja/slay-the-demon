@@ -70,6 +70,35 @@ test('movement responds on the first frame and normalized diagonals are no faste
   assert.ok(Math.abs(Math.hypot(a.position.x, a.position.z) - PLAYER.speed * 0.5) < 0.01);
   assert.ok(Math.abs(a.position.length() - b.position.length()) < 0.01);
 });
+test('robot animation preserves terrain elevation through movement, combat, death and respawn', () => {
+  const { collision, player } = setup();
+  collision.heightAt = (x, z) => 1.2 + x * 0.12 + z * 0.035;
+  player.reset(-10);
+  const controls = [
+    input(),
+    input(['KeyW']),
+    input(['KeyD', 'ShiftLeft']),
+    input([], false, false, ['Space']),
+    input([], true),
+    input([], false, true),
+  ];
+  let time = 0;
+  for (const control of controls) {
+    for (let frame = 0; frame < 40; frame++) {
+      time += 1 / 60;
+      player.update(1 / 60, time, control, null);
+      assert.equal(player.position.y, collision.heightAt(player.position.x, player.position.z));
+    }
+  }
+  const ground = player.position.y;
+  player.health = 0;
+  player.update(0.3, time + 0.3, input(), null);
+  assert.equal(player.position.y, ground, 'falling animation must stay relative to the terrain');
+  player.reset(-12, 2);
+  player.update(1 / 60, time + 0.4, input(), null);
+  assert.equal(player.position.y, collision.heightAt(2, -12));
+  assert.equal(player.model.group.rotation.z, 0);
+});
 test('sprint is faster and consumes stamina; idle replenishes it', () => {
   const { player } = setup();
   for (let i = 0; i < 60; i++) player.update(1 / 60, i / 60, input(['KeyW', 'ShiftLeft']), null);

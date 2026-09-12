@@ -3,6 +3,7 @@ import { materials as m } from '../world/materials';
 import { box, cylinder, sphere } from '../world/primitives';
 export class RobotModel {
   group = new THREE.Group();
+  private pose = new THREE.Group();
   body = new THREE.Group();
   head = new THREE.Group();
   leftLeg = new THREE.Group();
@@ -12,7 +13,9 @@ export class RobotModel {
   sword = new THREE.Group();
   trail: THREE.Mesh;
   constructor() {
-    const root = this.group;
+    // World position belongs to movement; animation only changes this local pose.
+    this.group.add(this.pose);
+    const root = this.pose;
     root.add(this.body);
     this.body.position.y = 0.88;
     box(this.body, m.blue, 0, 0.12, 0, 0.93, 0.88, 0.63, true);
@@ -128,7 +131,7 @@ export class RobotModel {
       this.body.rotation.x = -Math.sin(hit * 20) * 0.18;
       this.head.rotation.x = 0.12;
     } else this.head.rotation.x = 0;
-    this.group.rotation.z = dead > 0 ? Math.min(Math.PI / 2, dead * 1.8) : 0;
-    this.group.position.y = dead > 0 ? -0.1 : 0;
+    this.pose.rotation.z = dead > 0 ? Math.min(Math.PI / 2, dead * 1.8) : 0;
+    this.pose.position.y = dead > 0 ? -0.1 : 0;
   }
 }

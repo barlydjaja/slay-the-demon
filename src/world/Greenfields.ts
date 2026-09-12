@@ -64,8 +64,10 @@ export class Greenfields {
     return this.assets.place(this.group, name, { x, z, scale, yaw });
   }
   private terrain() {
-    const terrain=this.assets.clone('terrain');
-    terrain.traverse(o=>{if(o instanceof THREE.Mesh)o.castShadow=false;});
+    const terrain = this.assets.clone('terrain');
+    terrain.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.castShadow = false;
+    });
     this.group.add(terrain);
     this.put('ruined_arch', 0, 42, 1.6);
     this.collision.add(0, 43, 12, 2);
@@ -138,16 +140,30 @@ export class Greenfields {
       ['longhouse', 27, -23, -Math.PI / 2],
     ] as const) {
       this.put(name, x, z, 1, yaw);
-      if(name==='longhouse') {
-        const wingX=x+3.2*Math.cos(yaw)-.6*Math.sin(yaw),wingZ=z-3.2*Math.sin(yaw)-.6*Math.cos(yaw);
-        this.collision.add(wingX,wingZ,Math.abs(yaw)>.1?2.5:1.9,Math.abs(yaw)>.1?1.9:2.5);
+      if (name === 'longhouse') {
+        const wingX = x + 3.2 * Math.cos(yaw) - 0.6 * Math.sin(yaw),
+          wingZ = z - 3.2 * Math.sin(yaw) - 0.6 * Math.cos(yaw);
+        this.collision.add(
+          wingX,
+          wingZ,
+          Math.abs(yaw) > 0.1 ? 2.5 : 1.9,
+          Math.abs(yaw) > 0.1 ? 1.9 : 2.5,
+        );
       }
       const sideways = Math.abs(yaw) > 0.1;
       this.collision.add(x, z, sideways ? 4.9 : 5.6, sideways ? 5.6 : 4.9);
     }
-    const paving:Placement[]=[];
-    for(let i=0;i<10;i++){const a=i*Math.PI/5;paving.push({x:16+Math.sin(a)*2.1,z:-23+Math.cos(a)*2.1,scale:.55,yaw:a+Math.PI/2});}
-    this.assets.scatter(this.group,'stepping_stones',paving,false);
+    const paving: Placement[] = [];
+    for (let i = 0; i < 10; i++) {
+      const a = (i * Math.PI) / 5;
+      paving.push({
+        x: 16 + Math.sin(a) * 2.1,
+        z: -23 + Math.cos(a) * 2.1,
+        scale: 0.55,
+        yaw: a + Math.PI / 2,
+      });
+    }
+    this.assets.scatter(this.group, 'stepping_stones', paving, false);
     this.put('well', 16, -23);
     this.collision.add(16, -23, 2.3, 2.3);
     const mill = this.put('windmill', 29, -36, 0.95);
