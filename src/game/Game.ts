@@ -13,6 +13,7 @@ import { Lighting } from '../world/Lighting';
 import { Player } from '../player/Player';
 import { Enemy } from '../enemies/Enemy';
 import { Boss } from '../enemies/Boss';
+import { CastleCreatureAssets } from '../enemies/CastleCreatureAssets';
 import { AudioManager } from '../audio/AudioManager';
 import { HUD } from '../ui/HUD';
 import type { Greenfields } from '../world/Greenfields';
@@ -141,6 +142,31 @@ export class Game {
         if (inspect === 'pond') this.player.reset(21, -18);
         this.camera.snap(this.player.position);
       }
+      if ((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV) {
+        // Local encounter inspection; this entire branch is excluded from production.
+        const inspect = new URLSearchParams(location.search);
+        if (inspect.get('encounter') === 'reaper') {
+          this.checkpoint = true;
+          this.player.reset(-124.1);
+          const attack = ['slash', 'heavy', 'hunt', 'lunge', 'sweep', 'eruption'].indexOf(
+            inspect.get('attack') ?? '',
+          );
+          if (attack >= 0) {
+            this.player.reset(BOSS.spawnZ + 5);
+            this.boss!.state = 'chase';
+            this.boss!.attackIndex = attack;
+            this.boss!.timer = 0.4;
+            this.boss!.onAggro();
+          }
+          if (inspect.get('phase') === '2') this.boss!.health = BOSS.health / 2;
+          this.camera.snap(this.player.position);
+          this.changeState(attack >= 0 ? GameState.BOSS_COMBAT : GameState.PLAYING);
+        } else if (inspect.get('encounter') === 'guardians') {
+          this.player.reset(-19, 0);
+          this.camera.snap(this.player.position);
+          this.changeState(GameState.PLAYING);
+        }
+      }
       this.lastTime = performance.now();
       requestAnimationFrame(this.tick);
     } catch (error) {
@@ -153,7 +179,10 @@ export class Game {
   private async buildCastle() {
     this.hud.loading(30, 'Uncovering the old kingdom…');
     await this.paint();
-    const assets = await CastleAssets.load();
+    const [assets, creatures] = await Promise.all([
+      CastleAssets.load(),
+      CastleCreatureAssets.load(),
+    ]);
     this.effects = new Effects();
     this.scene.add(this.effects.group);
     this.castle = new Castle(this.collision, assets);
@@ -164,8 +193,8 @@ export class Game {
     this.player = new Player(this.collision, this.effects, this.audio);
     this.scene.add(this.player.model.group);
     this.player.model.group.rotation.y = 0.3;
-    this.spawnEnemies();
-    const boss = (this.boss = new Boss(this.collision, this.effects, this.audio));
+    this.spawnEnemies(creatures);
+    const boss = (this.boss = new Boss(this.collision, this.effects, this.audio, creatures));
     this.scene.add(boss.model.group, boss.telegraphs);
     this.reflection = await WaterReflection.create(this.renderer, this.castle.water);
     this.scene.add(this.reflection.surface);
@@ -178,6 +207,13 @@ export class Game {
     boss.onDamage = (blocked) => {
       this.hud.flash(blocked);
       this.camera.shake = blocked ? 0.25 : 0.7;
+    };
+    boss.onPhase = () => {
+      this.hud.toast('The hollow hunger awakens. Watch for a third cut.');
+      this.camera.shake = 0.8;
+    };
+    boss.onImpact = () => {
+      this.camera.shake = Math.max(this.camera.shake, 0.16);
     };
     boss.onDeath = () => {
       // Fetch the next map while the gate opens, before the player reaches it.
@@ -332,7 +368,7 @@ export class Game {
     });
     this.rendererName = 'WebGL 2';
   }
-  private spawnEnemies() {
+  private spawnEnemies(creatures: CastleCreatureAssets) {
     const spawn: [number, 'armor' | 'spider', number, number][] = [
       [1, 'armor', -2, -22],
       [1, 'spider', 3, -27],
@@ -349,7 +385,16 @@ export class Game {
       [3, 'armor', 1, -102],
     ];
     for (const [zone, type, x, z] of spawn) {
-      const enemy = new Enemy(type, zone, x, z, this.collision, this.effects, this.audio);
+      const enemy = new Enemy(
+        type,
+        zone,
+        x,
+        z,
+        this.collision,
+        this.effects,
+        this.audio,
+        creatures.clone(type),
+      );
       this.enemies.push(enemy);
       this.scene.add(enemy.model.group);
     }
@@ -402,6 +447,7 @@ export class Game {
   }
   private resume() {
     if (this.state !== GameState.PAUSED) return;
+    void this.audio.start().catch(() => {});
     this.changeState(this.beforePause);
     this.audio.setPaused(false);
     this.renderer.domElement.focus();

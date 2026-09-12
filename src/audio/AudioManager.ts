@@ -133,9 +133,25 @@ export class AudioManager {
       | 'heavy'
       | 'heal'
       | 'thunder'
-      | 'victory',
+      | 'victory'
+      | 'reaperScream'
+      | 'soulRing'
+      | 'graveMark',
   ) {
     switch (name) {
+      case 'reaperScream':
+        this.tone(170, 2.1, 0.07, 'sawtooth', 43);
+        this.tone(257, 1.9, 0.045, 'triangle', 52);
+        this.hiss(1.7, 0.32, 750);
+        break;
+      case 'soulRing':
+        this.tone(630, 1.4, 0.06, 'sine', 110);
+        this.tone(647, 1.3, 0.045, 'sine', 95);
+        break;
+      case 'graveMark':
+        this.tone(73, 0.45, 0.08, 'triangle', 25);
+        this.hiss(0.3, 0.3, 320);
+        break;
       case 'swing':
         this.hiss(0.2, 0.7, 1800);
         this.tone(280, 0.14, 0.045, 'triangle', 100);

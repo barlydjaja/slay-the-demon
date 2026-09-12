@@ -1,6 +1,5 @@
 node_modules/
 dist/
-.sites-runtime/
 .DS_Store
 art/blender/__pycache__/
 art/blender/*.blend[0-9]

@@ -12,6 +12,9 @@ import type { Effects } from '../src/world/Effects';
 import type { AudioManager } from '../src/audio/AudioManager';
 import type { InputManager } from '../src/game/InputManager';
 
+import { loadCreatureAssets } from './fixtures/creature-assets';
+const creatures = await loadCreatureAssets();
+
 const effects = { burst() {}, splash() {}, ripple() {} } as unknown as Effects;
 const audio = { play() {}, setBoss() {} } as unknown as AudioManager;
 function setup() {
@@ -133,7 +136,7 @@ test('evasion has a bounded invulnerability window and a stamina cost', () => {
 });
 test('one swing has one impact window and cannot damage an enemy twice', () => {
   const { player, collision } = setup();
-  const enemy = new Enemy('armor', 1, 0, 1.7, collision, effects, audio);
+  const enemy = new Enemy('armor', 1, 0, 1.7, collision, effects, audio, creatures.clone('armor'));
   let windows = 0;
   for (let i = 0; i < 30; i++) {
     player.update(1 / 60, i / 60, input([], i === 0), new THREE.Vector3(0, 0, 3));
@@ -150,7 +153,7 @@ test('the boss stays dormant at the aggro boundary and wakes once inside it', ()
   assert.equal(canBossAggro(BOSS_AGGRO_DISTANCE, 100, BOSS_AGGRO_DISTANCE), false);
   assert.equal(canBossAggro(1, 0, BOSS_AGGRO_DISTANCE), false);
   const { player, collision } = setup(),
-    boss = new Boss(collision, effects, audio);
+    boss = new Boss(collision, effects, audio, creatures);
   let aggro = 0;
   boss.onAggro = () => aggro++;
   player.position.set(0, 0, BOSS.spawnZ + BOSS_AGGRO_DISTANCE + 1);
@@ -164,9 +167,9 @@ test('the boss stays dormant at the aggro boundary and wakes once inside it', ()
   boss.update(0.1, 0.2, player);
   assert.equal(aggro, 1);
 });
-test('boss independently reaches all four telegraphs and recovery states', () => {
+test('boss independently reaches all six telegraphs and recovery states', () => {
   const { player, collision } = setup(),
-    boss = new Boss(collision, effects, audio);
+    boss = new Boss(collision, effects, audio, creatures);
   const observed = new Set<string>();
   const tells = new Set<string>();
   for (let frame = 0; frame < 60 * 80; frame++) {
@@ -185,7 +188,7 @@ test('boss independently reaches all four telegraphs and recovery states', () =>
 });
 test('boss death fires once and reset fully restores the encounter', () => {
   const { player, collision } = setup(),
-    boss = new Boss(collision, effects, audio);
+    boss = new Boss(collision, effects, audio, creatures);
   let deaths = 0;
   boss.onDeath = () => deaths++;
   boss.state = 'recover';

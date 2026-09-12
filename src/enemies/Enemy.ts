@@ -9,8 +9,8 @@ import { PLAYER } from '../game/config';
 import { FieldCreatureModel } from './FieldCreatureModel';
 import { isFieldSanctuary, type FieldMonster } from '../world/GreenfieldsConfig';
 export const ENEMY_PROFILES = {
-  armor: { health: 96, speed: 2.35, range: 2.1, windup: 0.75, damage: 15, height: 2.95 },
-  spider: { health: 64, speed: 4.15, range: 1.5, windup: 0.5, damage: 10, height: 1.3 },
+  armor: { health: 96, speed: 2.35, range: 2.1, windup: 0.75, damage: 15, height: 3.55 },
+  spider: { health: 64, speed: 4.15, range: 1.5, windup: 0.5, damage: 10, height: 1.7 },
   wolf: { health: 96, speed: 4.7, range: 1.65, windup: 0.55, damage: 13, height: 2.2 },
   golem: { health: 224, speed: 1.9, range: 2.3, windup: 1.15, damage: 27, height: 3.5 },
   thornling: { health: 64, speed: 2.8, range: 1.7, windup: 0.7, damage: 12, height: 2.6 },
@@ -37,15 +37,15 @@ export class Enemy {
     private collision: CollisionSystem,
     private effects: Effects,
     private audio: AudioManager,
-    fieldTemplate?: THREE.Group,
+    template?: THREE.Group,
   ) {
     this.profile = ENEMY_PROFILES[type];
     this.model =
       type === 'armor'
-        ? new ArmorModel()
+        ? new ArmorModel(template)
         : type === 'spider'
-          ? new SpiderModel()
-          : new FieldCreatureModel(type, fieldTemplate);
+          ? new SpiderModel(template)
+          : new FieldCreatureModel(type, template);
     this.model.group.position.set(x, this.collision.heightAt(x, z), z);
     this.origin.copy(this.model.group.position);
     this.maxHealth = this.health = this.profile.health;
