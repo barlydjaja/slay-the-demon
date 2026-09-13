@@ -3,7 +3,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 /** The castle's architecture and props are authored and exported from Blender. */
 export class CastleAssets {
-  constructor(private library: THREE.Group) {
+  constructor(
+    private library: THREE.Group,
+    private clips: THREE.AnimationClip[] = [],
+  ) {
     library.updateMatrixWorld(true);
     library.traverse((object) => {
       if (object instanceof THREE.Mesh) {
@@ -15,12 +18,14 @@ export class CastleAssets {
   static async load() {
     const url = new URL('models/castle-kit.glb', document.baseURI).href;
     const gltf = await new GLTFLoader().loadAsync(url);
-    return new CastleAssets(gltf.scene);
+    return new CastleAssets(gltf.scene, gltf.animations);
   }
   clone(name: string) {
     const object = this.library.getObjectByName(name);
     if (!object) throw new Error(`Missing Blender castle asset: ${name}`);
-    return object.clone(true) as THREE.Group;
+    const copy = object.clone(true) as THREE.Group;
+    if (name === 'exit_threshold') copy.animations = this.clips;
+    return copy;
   }
   place(parent: THREE.Object3D, name: string, x: number, y: number, z: number, scale = 1, yaw = 0) {
     const object = this.clone(name);

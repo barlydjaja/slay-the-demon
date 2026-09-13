@@ -1,4 +1,16 @@
+import {
+  BOSS_ATTACKS,
+  PHASE_DURATION,
+  PHASE_ONE_PATTERN,
+  PHASE_TWO_PATTERN,
+} from '../enemies/BossAI';
 import * as THREE from 'three';
+import {
+  DisciplineAbilities,
+  DISCIPLINES,
+  validDiscipline,
+  type Discipline,
+} from '../combat/Disciplines';
 import type { WebGPURenderer } from 'three/webgpu';
 import { GameState, isGameplay } from './GameState';
 import { AREAS, BOSS, BOSS_AGGRO_DISTANCE, WORLD, type Settings } from './config';
@@ -10,6 +22,7 @@ import { CastleAssets } from '../world/CastleAssets';
 import { Effects } from '../world/Effects';
 import { WaterReflection } from '../world/WaterReflection';
 import { Lighting } from '../world/Lighting';
+import { RobotAssets } from '../player/RobotAssets';
 import { Player } from '../player/Player';
 import { Enemy } from '../enemies/Enemy';
 import { Boss } from '../enemies/Boss';
@@ -59,6 +72,7 @@ export class Game {
   private storyRead = false;
   private elderGreeted = false;
   private storyPage = 0;
+  private abilities?: DisciplineAbilities;
   private firstlight = new FirstlightQuest();
   private journeySave = new JourneySave();
   private savedJourney = this.journeySave.load();
@@ -85,6 +99,7 @@ export class Game {
   private time = 0;
   private lastHealth = 100;
   private debugEnabled = false;
+  private reviewPaused = false;
   private fps = 60;
   private telemetryTime = 0;
   private uiTime = 0;
@@ -99,6 +114,8 @@ export class Game {
     this.arenaSeal.active = false;
     this.hud = new HUD({
       play: () => this.play(),
+      chooseDiscipline: (choice) => this.chooseDiscipline(choice),
+      leaveDisciplines: () => this.leaveDisciplines(),
       journal: () => this.toggleJournal(),
       newJourney: () => this.newJourney(),
       advance: () => this.advanceStory(),
@@ -168,6 +185,21 @@ export class Game {
         if (inspect === 'mara') this.player.reset(-17.5, 12);
         if (inspect === 'winding') this.player.reset(14, -17);
         if (inspect === 'sunwheel') this.player.reset(-26, -24);
+        if (inspect === 'disciplines' || inspect === 'combat') {
+          this.firstlight.accept();
+          this.firstlight.recover('winding');
+          this.firstlight.recover('sunwheel');
+          this.firstlight.restore();
+          this.player.maxStamina = this.player.stamina = this.firstlight.energyCapacity;
+          this.fields!.syncFirstlight(this.firstlight);
+          this.player.reset(-23, 13.8);
+          if (inspect === 'combat') {
+            this.player.reset(5.5, 17);
+            this.player.discipline =
+              validDiscipline(new URLSearchParams(location.search).get('discipline')) ??
+              'stormblade';
+          }
+        }
         if (inspect === 'repair') {
           this.firstlight.accept();
           this.firstlight.recover('winding');
@@ -183,9 +215,10 @@ export class Game {
         if (inspect.get('encounter') === 'reaper') {
           this.checkpoint = true;
           this.player.reset(-124.1);
-          const attack = ['slash', 'heavy', 'hunt', 'lunge', 'sweep', 'eruption'].indexOf(
-            inspect.get('attack') ?? '',
-          );
+          const phase = inspect.get('phase') === '2' ? 2 : 1;
+          const pattern = phase === 2 ? PHASE_TWO_PATTERN : PHASE_ONE_PATTERN;
+          const attack = pattern.findIndex((kind) => kind === inspect.get('attack'));
+          if (phase === 2 && attack >= 0) this.boss!.phase = 2;
           if (attack >= 0) {
             this.player.reset(BOSS.spawnZ + 5);
             this.boss!.state = 'chase';
@@ -196,6 +229,59 @@ export class Game {
           if (inspect.get('phase') === '2') this.boss!.health = BOSS.health / 2;
           this.camera.snap(this.player.position);
           this.changeState(attack >= 0 ? GameState.BOSS_COMBAT : GameState.PLAYING);
+          // Explicit local review poses run the real encounter clock, then hold for visual QA.
+          const pose = inspect.get('pose');
+          if (pose) {
+            const boss = this.boss!;
+            boss.phase = phase;
+            boss.health = BOSS.health;
+            boss.timer = 0;
+            this.player.invulnerable = 999;
+            if (pose === 'transformation') {
+              boss.state = 'phase';
+              boss.phase = 2;
+              boss.timer = PHASE_DURATION - 1.9;
+              boss.model.animateState('phase', 'slash', 2, boss.timer, 0);
+            } else {
+              boss.state = 'chase';
+              boss.attackIndex = Math.max(0, attack);
+              boss.update(0.001, 0, this.player);
+              const w = BOSS_ATTACKS[boss.attackKind].windup;
+              const seconds =
+                pose === 'windup'
+                  ? w * 0.8
+                  : pose === 'return'
+                    ? w + 2.15
+                    : w +
+                      (boss.attackKind === 'dive'
+                        ? 0.525
+                        : boss.attackKind === 'loom'
+                          ? 0.95
+                          : 0.32);
+              for (let t = 0; t < seconds; t += 0.01)
+                boss.update(Math.min(0.01, seconds - t), t, this.player);
+            }
+            this.reviewPaused = true;
+            this.progress();
+            this.hud.boss(boss.health, boss.tell);
+            const play = document.createElement('button');
+            play.textContent = 'Play encounter';
+            play.style.cssText =
+              'position:fixed;z-index:100;left:28px;bottom:120px;padding:12px 18px;background:#19212b;color:#dde6e9;border:1px solid #687480;cursor:pointer';
+            play.onclick = () => {
+              this.reviewPaused = false;
+              this.player.invulnerable = 0;
+              play.remove();
+            };
+            document.body.appendChild(play);
+          }
+        } else if (inspect.get('encounter') === 'exit') {
+          this.boss!.state = 'dead';
+          this.boss!.model.group.visible = false;
+          this.castle!.exitOpened = true;
+          this.player.reset(-142.5);
+          this.camera.snap(this.player.position);
+          this.changeState(GameState.BOSS_DEAD);
         } else if (inspect.get('encounter') === 'guardians') {
           this.player.reset(-19, 0);
           this.camera.snap(this.player.position);
@@ -214,9 +300,10 @@ export class Game {
   private async buildCastle() {
     this.hud.loading(30, 'Uncovering the old kingdom…');
     await this.paint();
-    const [assets, creatures] = await Promise.all([
+    const [assets, creatures, machine] = await Promise.all([
       CastleAssets.load(),
       CastleCreatureAssets.load(),
+      RobotAssets.load(),
     ]);
     this.effects = new Effects();
     this.scene.add(this.effects.group);
@@ -225,7 +312,7 @@ export class Game {
     this.lighting = new Lighting(this.scene, this.castle.torches);
     this.hud.loading(52, 'Waking the last machine…');
     await this.paint();
-    this.player = new Player(this.collision, this.effects, this.audio);
+    this.player = new Player(this.collision, this.effects, this.audio, machine);
     this.scene.add(this.player.model.group);
     this.player.model.group.rotation.y = 0.3;
     this.spawnEnemies(creatures);
@@ -244,7 +331,9 @@ export class Game {
       this.camera.shake = blocked ? 0.25 : 0.7;
     };
     boss.onPhase = () => {
-      this.hud.toast('The hollow hunger awakens. Watch for a third cut.');
+      this.hud.toast(
+        'Its shroud splits open. Leave the crossing blades—and beware the falling shadow.',
+      );
       this.camera.shake = 0.8;
     };
     boss.onImpact = () => {
@@ -294,7 +383,10 @@ export class Game {
       this.lighting = new FieldLighting(this.scene);
       this.hud.loading(73, 'Waking the last machine in a new world…');
       await this.paint();
-      this.player = new Player(this.collision, this.effects, this.audio);
+      const machine = await RobotAssets.load();
+      this.player = new Player(this.collision, this.effects, this.audio, machine);
+      this.abilities = new DisciplineAbilities(machine);
+      this.scene.add(this.abilities.group);
       this.player.reset(FIELD_SPAWN.z, FIELD_SPAWN.x);
       this.scene.add(this.player.model.group);
       for (const spawn of FIELD_ENCOUNTERS) {
@@ -338,6 +430,7 @@ export class Game {
       }
       this.fields.setStoryRead(this.storyRead);
       this.fields.syncFirstlight(this.firstlight);
+      this.player.discipline = this.firstlight.restored ? validDiscipline(saved?.discipline) : null;
       this.player.maxStamina = this.firstlight.energyCapacity;
       this.player.stamina = this.player.maxStamina;
       this.lastHealth = 100;
@@ -347,7 +440,7 @@ export class Game {
       this.fields.update(this.time);
       this.hud.chapter(true);
       this.applySettings(this.hud.settings);
-      this.hud.loading(92, 'Preparing sunlight and shadows…');
+      this.hud.loading(92, 'Gathering low mist and lantern light…');
       await this.paint();
       await this.renderer.compileAsync(this.scene, this.camera.camera);
       this.hud.loading(100, 'Chapter II · A new beginning');
@@ -355,7 +448,7 @@ export class Game {
       this.audio.setFields(true);
       this.audio.play('victory');
       this.changeState(GameState.PLAYING);
-      this.hud.location('The Greenfields', 'CHAPTER II · A NEW BEGINNING');
+      this.hud.location('The Greenfields', 'CHAPTER II · BEYOND THE LANTERNS');
       this.fieldArea = 'fields';
       this.hud.objective('An old man waits beneath the tree. Approach him.', 'BEYOND THE GATE');
       this.hud.toast(
@@ -419,7 +512,7 @@ export class Game {
           this.restAtWell();
           this.audio.play('victory');
           this.hud.location('Firstlight Restored', 'A LIGHT TO COME HOME TO');
-          this.hud.toast('FIRSTLIGHT CAPACITOR INSTALLED · +20 maximum energy');
+          this.hud.toast('CAPACITOR INSTALLED · +20 energy · Choose a discipline at the well');
           this.hud.memory(
             'The sails begin to turn. For a moment, the whole village stops to listen.',
           );
@@ -480,6 +573,7 @@ export class Game {
       elderGreeted: this.elderGreeted,
       villageFound: this.villageFound,
       firstlight: this.firstlight.snapshot(),
+      discipline: this.player.discipline,
       defeated: this.enemies.flatMap((enemy, i) =>
         enemy.health <= 0 ? [FIELD_ENCOUNTERS[i].id] : [],
       ),
@@ -524,8 +618,10 @@ export class Game {
         'A CHILD OF FIRSTLIGHT',
         'UNTIL NEXT TIME',
       );
-    else if (target === 'well') this.restAtWell();
-    else if (target && this.firstlight.recover(target)) {
+    else if (target === 'well') {
+      this.restAtWell();
+      if (this.firstlight.restored) this.openDisciplines();
+    } else if (target && this.firstlight.recover(target)) {
       this.fields!.syncFirstlight(this.firstlight);
       this.audio.play('heal');
       this.effects.burst(
@@ -604,6 +700,7 @@ export class Game {
     }
   }
   private changeState(state: GameState) {
+    if (state === GameState.PLAYER_DEAD) this.abilities?.reset();
     this.state = state;
     this.input.enabled = isGameplay(state);
     this.input.clear();
@@ -663,6 +760,7 @@ export class Game {
   private restart() {
     void this.audio.start();
     if (this.chapter === 'fields') {
+      this.abilities?.reset();
       const spawn = this.villageFound ? FIELD_CHECKPOINT : FIELD_SPAWN;
       this.player.reset(spawn.z, spawn.x);
       for (const enemy of this.enemies) if (enemy.health > 0) enemy.reset();
@@ -708,7 +806,11 @@ export class Game {
       requestAnimationFrame(this.tick);
       return;
     }
-    if (![GameState.PAUSED, GameState.JOURNAL, GameState.DIALOGUE].includes(this.state))
+    if (
+      ![GameState.PAUSED, GameState.JOURNAL, GameState.DIALOGUE, GameState.DISCIPLINES].includes(
+        this.state,
+      )
+    )
       this.time += dt;
     if (this.input.consume('KeyJ')) this.toggleJournal();
     if (this.input.consume('F3')) this.debugEnabled = !this.debugEnabled;
@@ -718,6 +820,7 @@ export class Game {
         else if (this.state === GameState.INTRO) this.skipIntro();
         else if (this.state === GameState.DIALOGUE) this.leaveStory();
         else if (this.state === GameState.JOURNAL) this.toggleJournal();
+        else if (this.state === GameState.DISCIPLINES) this.leaveDisciplines();
         else this.pause();
       }
     }
@@ -748,10 +851,18 @@ export class Game {
         this.hud.memory('Beyond the throne, a warm breeze. Beyond the walls… life.');
       }
     }
-    if (![GameState.PAUSED, GameState.JOURNAL, GameState.DIALOGUE].includes(this.state)) {
+    if (
+      ![GameState.PAUSED, GameState.JOURNAL, GameState.DIALOGUE, GameState.DISCIPLINES].includes(
+        this.state,
+      )
+    ) {
       this.fields?.update(this.time, this.player.position);
       this.castle?.update(this.time, dt, this.player.position.z);
       this.effects.update(dt, this.time, this.player.position.z);
+      if (this.lighting instanceof Lighting) {
+        this.lighting.bossPhase = this.boss?.phase ?? 1;
+        if (this.boss) this.lighting.bossPosition.copy(this.boss.position);
+      }
       this.lighting.update(
         dt,
         this.time,
@@ -785,6 +896,7 @@ export class Game {
     requestAnimationFrame(this.tick);
   };
   private updateGameplay(dt: number) {
+    if (this.reviewPaused) return;
     this.mouse.set(this.input.mouse.x, this.input.mouse.y);
     this.raycaster.setFromCamera(this.mouse, this.camera.camera);
     this.ground.constant = -this.player.position.y;
@@ -817,6 +929,22 @@ export class Game {
     ) {
       void this.enterFields();
       return;
+    }
+    if (this.chapter === 'fields') {
+      if (this.input.consume('KeyQ')) {
+        const before = this.enemies.filter((enemy) => enemy.health <= 0).length;
+        const message = this.abilities!.activate(
+          this.player,
+          this.enemies,
+          this.collision,
+          this.effects,
+          this.audio,
+        );
+        this.hud.toast(message);
+        if (this.enemies.filter((enemy) => enemy.health <= 0).length !== before)
+          this.persistJourney();
+      }
+      this.abilities?.update(dt, this.time, this.player);
     }
     for (const enemy of this.enemies) {
       const near = enemy.position.distanceToSquared(this.player.position) < 34 ** 2;
@@ -853,8 +981,44 @@ export class Game {
         this.player.blocking,
         this.player.maxStamina,
       );
+      this.hud.ability(
+        this.player.discipline,
+        this.player.abilityCooldown,
+        this.player.stamina,
+        this.player.parryCharge,
+        this.firstlight.restored,
+      );
       if (this.boss?.active) this.hud.boss(this.boss.health, this.boss.tell);
     }
+  }
+  private openDisciplines() {
+    if (!isGameplay(this.state) || !this.firstlight.restored || this.fieldInteraction() !== 'well')
+      return;
+    this.changeState(GameState.DISCIPLINES);
+    this.audio.setPaused(true);
+    this.hud.disciplines(this.player.discipline);
+  }
+  private chooseDiscipline(choice: Discipline) {
+    if (
+      this.state !== GameState.DISCIPLINES ||
+      !this.firstlight.restored ||
+      !validDiscipline(choice) ||
+      this.fieldInteraction() !== 'well'
+    )
+      return;
+    this.player.chooseDiscipline(choice);
+    this.abilities?.reset();
+    this.persistJourney();
+    this.leaveDisciplines();
+    this.hud.toast(
+      `${DISCIPLINES[choice].name.toUpperCase()} · [Q] ${DISCIPLINES[choice].ability}`,
+    );
+  }
+  private leaveDisciplines() {
+    if (this.state !== GameState.DISCIPLINES) return;
+    this.changeState(GameState.PLAYING);
+    this.audio.setPaused(false);
+    this.renderer.domElement.focus();
   }
   private restAtWell() {
     this.player.health = 100;
@@ -872,7 +1036,7 @@ export class Game {
       this.fieldArea = area;
       this.hud.location(
         village ? 'Firstlight Village' : 'The Greenfields',
-        village ? 'A LIGHT THAT ENDURED · SANCTUARY' : 'CHAPTER II · A NEW BEGINNING',
+        village ? 'A LIGHT THAT ENDURED · SANCTUARY' : 'CHAPTER II · BEYOND THE LANTERNS',
       );
     }
     if (village && !this.villageFound) {
@@ -907,7 +1071,7 @@ export class Game {
       elder: 'Speak with Elder Rowan',
       mara: this.firstlight.ready ? 'Return the components to Mara' : 'Speak with Mara',
       child: 'Speak with Pip',
-      well: 'Rest at the village well',
+      well: this.firstlight.restored ? 'Rest and choose a discipline' : 'Rest at the village well',
       winding: 'Recover copper winding',
       sunwheel: 'Recover sunwheel',
     };
@@ -930,7 +1094,7 @@ export class Game {
       }
     if (this.bossDefeated)
       this.hud.objective(
-        'Walk through the sunlit gate behind the throne.',
+        'Follow the pale light through the gate behind the throne.',
         'A WORLD BEYOND THE WALLS',
       );
     else if (this.boss.active)

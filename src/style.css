@@ -1317,9 +1317,9 @@ kbd {
   }
 }
 
-/* Chapter II: sunlight through the old, dark frame. */
+/* Chapter II: small lanterns in an overcast wilderness. */
 .in-fields .vignette {
-  opacity: 0.3;
+  opacity: 0.7;
 }
 .in-fields .screen-grain {
   opacity: 0.035;
@@ -1781,5 +1781,101 @@ kbd {
   }
   .journal-parts > div {
     padding: 10px 0;
+  }
+}
+
+.ability-status {
+  position: absolute;
+  left: 40px;
+  top: 182px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #12212bde;
+  border-left: 2px solid #94bfca;
+  padding: 10px 14px;
+}
+.ability-status strong,
+.ability-status span {
+  display: block;
+}
+.ability-status strong {
+  font-family: 'Cinzel', serif;
+  font-size: 12px;
+  color: #d3e5e8;
+}
+.ability-status span {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #a6bdc5;
+}
+.discipline-modal {
+  width: min(820px, 94vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.discipline-modal > p {
+  max-width: 620px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.discipline-choices {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 24px 0;
+}
+.discipline-choice {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  gap: 14px;
+  padding: 20px 16px;
+  background: #172730;
+  border: 1px solid #486068;
+  color: #d2ddd8;
+}
+.discipline-choice:hover,
+.discipline-choice:focus-visible,
+.discipline-choice[aria-pressed='true'] {
+  background: #243a43;
+  border-color: #c0a876;
+  outline: 2px solid #c0a876;
+  outline-offset: 3px;
+}
+.discipline-name {
+  font:
+    18px 'Cinzel',
+    serif;
+  color: #ebd8ad;
+}
+.discipline-description {
+  font-size: 13px;
+  line-height: 1.65;
+  text-transform: none;
+  letter-spacing: 0;
+  flex: 1;
+}
+.discipline-cost {
+  font-size: 11px;
+  line-height: 1.7;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #a7cbd3;
+}
+.discipline-equipped {
+  font-size: 10px;
+  color: #dbc291;
+}
+@media (max-width: 850px) {
+  .discipline-choices {
+    grid-template-columns: 1fr;
+  }
+  .discipline-choice {
+    gap: 7px;
+    padding: 14px;
+  }
+  .ability-status {
+    left: 20px;
   }
 }

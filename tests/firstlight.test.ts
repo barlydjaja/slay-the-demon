@@ -16,6 +16,7 @@ import {
 import { loadFirstlightAssets } from './fixtures/firstlight-assets';
 
 const snapshot = (): JourneySnapshot => ({
+  discipline: null,
   version: 1,
   chapter: 'fields',
   storyRead: true,

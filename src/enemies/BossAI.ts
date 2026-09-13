@@ -1,6 +1,7 @@
 export type BossState =
   'idle' | 'wake' | 'phase' | 'chase' | 'prepare' | 'attack' | 'recover' | 'reposition' | 'dead';
-export type AttackKind = 'slash' | 'heavy' | 'lunge' | 'sweep' | 'hunt' | 'eruption';
+export type AttackKind =
+  'slash' | 'heavy' | 'lunge' | 'sweep' | 'hunt' | 'eruption' | 'reave' | 'dive' | 'loom';
 export const BOSS_ATTACKS = {
   slash: {
     name: 'REAPING CUTS · TWO STRIKES',
@@ -62,16 +63,71 @@ export const BOSS_ATTACKS = {
     damage: 30,
     heavy: true,
   },
+  reave: {
+    name: 'WIDOW’S RETURN · WATCH BOTH PATHS',
+    windup: 1.15,
+    duration: 3.1,
+    recovery: 1.25,
+    range: 0,
+    halfAngle: 0,
+    damage: 26,
+    heavy: true,
+  },
+  dive: {
+    name: 'GALLOWS FALL · LEAVE THE MARK',
+    windup: 1.2,
+    duration: 2.15,
+    recovery: 1.5,
+    range: 3.7,
+    halfAngle: Math.PI,
+    damage: 34,
+    heavy: true,
+  },
+  loom: {
+    name: 'THE WIDOW’S LOOM · LEAVE THE CROSS',
+    windup: 1.6,
+    duration: 3.25,
+    recovery: 1.6,
+    range: 0,
+    halfAngle: 0,
+    damage: 25,
+    heavy: true,
+  },
 } as const;
+export const PHASE_DURATION = 3.4;
+export const DIVE_IMPACT = 1.05;
+export const REAVE_RELEASE = 0.22;
+export const PHASE_ONE_PATTERN: AttackKind[] = [
+  'slash',
+  'reave',
+  'heavy',
+  'dive',
+  'hunt',
+  'lunge',
+  'sweep',
+  'eruption',
+];
+export const PHASE_TWO_PATTERN: AttackKind[] = [
+  'loom',
+  'dive',
+  'slash',
+  'reave',
+  'eruption',
+  'heavy',
+  'hunt',
+  'lunge',
+  'sweep',
+];
 export const REAPING_BEATS = [0.12, 0.72, 1.32] as const;
 export const RUSH = { start: 0.12, end: 0.6, speed: 18, radius: 1.3 } as const;
 export const SOUL_RING = { start: 1.2, width: 0.6 } as const;
 export function attackDuration(kind: AttackKind, phase: number) {
   return kind === 'slash' && phase === 2 ? 1.62 : BOSS_ATTACKS[kind].duration;
 }
-export function chooseBossAttack(index: number, distance: number): AttackKind {
-  const near: AttackKind[] = ['slash', 'heavy', 'hunt', 'lunge', 'sweep', 'eruption'];
-  const far: AttackKind[] = ['lunge', 'hunt', 'eruption'];
+export function chooseBossAttack(index: number, distance: number, phase = 1): AttackKind {
+  const near = phase === 2 ? PHASE_TWO_PATTERN : PHASE_ONE_PATTERN;
+  const far: AttackKind[] =
+    phase === 2 ? ['loom', 'dive', 'reave', 'lunge'] : ['reave', 'dive', 'lunge', 'hunt'];
   return distance > 9 ? far[index % far.length] : near[index % near.length];
 }
 export function canBossAggro(distance: number, playerHealth: number, aggroDistance: number) {

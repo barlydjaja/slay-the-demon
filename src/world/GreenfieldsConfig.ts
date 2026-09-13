@@ -2,6 +2,14 @@ export const FIELD_BOUNDS = { halfWidth: 40, minZ: -65, maxZ: 44 };
 export const FIELD_SPAWN = { x: 0, z: 35 };
 export const ELDER_POSITION = { x: -3.4, z: 27 };
 export const VILLAGE = { x: 16, z: -23, radius: 15 };
+export const VILLAGE_WALLS = {
+  west: 0,
+  east: 34,
+  north: -42,
+  south: -10,
+  gateX: 14,
+  gateWidth: 7.2,
+};
 export const FIELD_CHECKPOINT = { x: 16, z: -15 };
 export type FieldMonster = 'wolf' | 'golem' | 'thornling';
 export const FIELD_ENCOUNTERS: { id: string; type: FieldMonster; x: number; z: number }[] = [
@@ -19,7 +27,8 @@ export const FIELD_ENCOUNTERS: { id: string; type: FieldMonster; x: number; z: n
   { id: 'far-golem', type: 'golem', x: 28, z: -51 },
 ];
 export function inVillage(x: number, z: number) {
-  return Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < VILLAGE.radius;
+  const w = VILLAGE_WALLS;
+  return x > w.west + 0.7 && x < w.east - 0.7 && z > w.north + 0.7 && z < w.south - 0.7;
 }
 export function isFieldSanctuary(x: number, z: number) {
   return inVillage(x, z) || z > 20;

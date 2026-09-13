@@ -1,3 +1,5 @@
+import { loadMachineAssets } from './fixtures/machine-assets';
+const machine = await loadMachineAssets();
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -7,7 +9,12 @@ import { PLAYER, BOSS_AGGRO_DISTANCE, BOSS } from '../src/game/config';
 import { Player } from '../src/player/Player';
 import { Enemy } from '../src/enemies/Enemy';
 import { Boss } from '../src/enemies/Boss';
-import { BOSS_ATTACKS, canBossAggro } from '../src/enemies/BossAI';
+import {
+  BOSS_ATTACKS,
+  PHASE_ONE_PATTERN,
+  PHASE_TWO_PATTERN,
+  canBossAggro,
+} from '../src/enemies/BossAI';
 import type { Effects } from '../src/world/Effects';
 import type { AudioManager } from '../src/audio/AudioManager';
 import type { InputManager } from '../src/game/InputManager';
@@ -19,7 +26,7 @@ const effects = { burst() {}, splash() {}, ripple() {} } as unknown as Effects;
 const audio = { play() {}, setBoss() {} } as unknown as AudioManager;
 function setup() {
   const collision = new CollisionSystem();
-  const player = new Player(collision, effects, audio);
+  const player = new Player(collision, effects, audio, machine);
   player.position.set(0, 0, 0);
   return { collision, player };
 }
@@ -167,24 +174,30 @@ test('the boss stays dormant at the aggro boundary and wakes once inside it', ()
   boss.update(0.1, 0.2, player);
   assert.equal(aggro, 1);
 });
-test('boss independently reaches all six telegraphs and recovery states', () => {
-  const { player, collision } = setup(),
-    boss = new Boss(collision, effects, audio, creatures);
-  const observed = new Set<string>();
-  const tells = new Set<string>();
-  for (let frame = 0; frame < 60 * 80; frame++) {
-    // Keep a living target in striking distance without changing the boss FSM.
-    player.position.set(boss.position.x, 0, boss.position.z + 4.7);
-    player.health = 100;
-    player.invulnerable = 10;
-    boss.update(1 / 60, frame / 60, player);
-    observed.add(boss.state);
-    if (boss.state === 'prepare') tells.add(boss.attackKind);
+test('boss independently reaches every attack in each phase and exposes recovery states', () => {
+  for (const phase of [1, 2]) {
+    const { player, collision } = setup(),
+      boss = new Boss(collision, effects, audio, creatures);
+    boss.phase = phase;
+    const observed = new Set<string>();
+    const tells = new Set<string>();
+    for (let frame = 0; frame < 60 * 80; frame++) {
+      // Keep a living target in striking distance without changing the boss FSM.
+      player.position.set(boss.position.x, 0, boss.position.z + 4.7);
+      player.health = 100;
+      player.invulnerable = 10;
+      boss.update(1 / 60, frame / 60, player);
+      observed.add(boss.state);
+      if (boss.state === 'prepare') tells.add(boss.attackKind);
+    }
+    assert.deepEqual(
+      [...tells].sort(),
+      (phase === 2 ? PHASE_TWO_PATTERN : PHASE_ONE_PATTERN).slice().sort(),
+    );
+    for (const state of ['wake', 'chase', 'prepare', 'attack', 'recover', 'reposition'])
+      assert.ok(observed.has(state), state);
+    assert.ok(boss.position.distanceTo(new THREE.Vector3(0, 0, BOSS.spawnZ)) > 1);
   }
-  assert.deepEqual([...tells].sort(), Object.keys(BOSS_ATTACKS).sort());
-  for (const state of ['wake', 'chase', 'prepare', 'attack', 'recover', 'reposition'])
-    assert.ok(observed.has(state), state);
-  assert.ok(boss.position.distanceTo(new THREE.Vector3(0, 0, BOSS.spawnZ)) > 1);
 });
 test('boss death fires once and reset fully restores the encounter', () => {
   const { player, collision } = setup(),

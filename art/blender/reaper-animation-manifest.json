@@ -1,0 +1,57 @@
+{
+  "fps": 100,
+  "clips": {
+    "reaper_idle_1": 2.4,
+    "reaper_walk_1": 0.8,
+    "reaper_slash_1": 3.17,
+    "reaper_heavy_1": 3.6,
+    "reaper_lunge_1": 3.13,
+    "reaper_sweep_1": 4.05,
+    "reaper_hunt_1": 3.2,
+    "reaper_eruption_1": 3.7,
+    "reaper_reave_1": 5.5,
+    "reaper_dive_1": 4.85,
+    "reaper_idle_2": 2.4,
+    "reaper_walk_2": 0.8,
+    "reaper_slash_2": 3.42,
+    "reaper_heavy_2": 3.2700000000000005,
+    "reaper_lunge_2": 2.87,
+    "reaper_sweep_2": 3.76,
+    "reaper_hunt_2": 2.9800000000000004,
+    "reaper_eruption_2": 3.44,
+    "reaper_reave_2": 5.25,
+    "reaper_dive_2": 4.55,
+    "reaper_loom_2": 6.13,
+    "reaper_phase": 3.4,
+    "reaper_wake": 2.7,
+    "reaper_death": 2.6
+  },
+  "contacts": {
+    "slash": [
+      0.12,
+      0.72
+    ],
+    "slash_phase2": [
+      0.12,
+      0.72,
+      1.32
+    ],
+    "heavy": [
+      0.32
+    ],
+    "dive": [
+      1.05
+    ],
+    "reave_release": [
+      0.22
+    ],
+    "loom": [
+      0.15,
+      0.65,
+      1.2,
+      1.7
+    ]
+  },
+  "timing_source": "src/enemies/BossAI.ts",
+  "authoring": "Blender NLA tracks; local pivot transforms baked at 50 Hz"
+}

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { STRIKE_CONTACT, STRIKE_DURATION } from './AttackMotion';
 import { ArmorModel, SpiderModel } from './CreatureModels';
 import { CollisionSystem } from '../game/CollisionSystem';
 import { Player } from '../player/Player';
@@ -25,6 +26,11 @@ export class Enemy {
   timer = 0;
   deadTime = 0;
   lastHit = -1;
+  private attackFacing = 0;
+  private impactDone = false;
+  distracted = 0;
+  private stagger = 0;
+  private warning: THREE.Mesh;
   private origin = new THREE.Vector3();
   private phase: number;
   private bar: THREE.Mesh;
@@ -64,11 +70,27 @@ export class Enemy {
     this.barGroup.position.y = this.profile.height;
     this.model.group.add(this.barGroup);
     this.barGroup.visible = false;
+    this.warning = new THREE.Mesh(
+      new THREE.RingGeometry(0.45, this.profile.range + 0.5, 28, 1, Math.PI / 2 - 0.85, 1.7),
+      new THREE.MeshBasicMaterial({
+        color: 0xffb86c,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    this.warning.rotation.x = Math.PI / 2;
+    this.warning.position.y = 0.08;
+    this.model.group.add(this.warning);
   }
   get position() {
     return this.model.group.position;
   }
   update(dt: number, time: number, player: Player, camera: THREE.Camera) {
+    this.warning.visible = false;
+    this.distracted = Math.max(0, this.distracted - dt);
+    this.stagger = Math.max(0, this.stagger - dt);
     if (this.state === 'dead') {
       this.deadTime += dt;
       this.model.animate(time, false, 0, 0, this.deadTime);
@@ -113,6 +135,12 @@ export class Enemy {
       this.barGroup.visible = false;
       return;
     }
+    if (this.distracted > 0) {
+      this.state = 'recover';
+      this.timer = Math.max(this.timer, 0.45);
+      this.model.animate(time, false, 0, 0);
+      return;
+    }
     this.timer -= dt;
     let moving = false,
       windup = 0,
@@ -146,6 +174,8 @@ export class Enemy {
       else if (distance < range + 0.4 && this.timer <= 0) {
         this.state = 'prepare';
         this.timer = this.profile.windup;
+        this.impactDone = false;
+        this.attackFacing = Math.atan2(dx, dz);
       } else if (distance > range * 0.8) {
         const speed = this.profile.speed;
         this.collision.move(
@@ -157,11 +187,38 @@ export class Enemy {
         moving = true;
       }
     } else if (this.state === 'prepare') {
-      windup = 1 - this.timer / this.profile.windup;
+      windup = Math.min(1, 1 - this.timer / this.profile.windup);
+      // Commit halfway through the tell, so a sidestep can actually evade the strike.
+      if (windup < 0.5) this.attackFacing = Math.atan2(dx, dz);
+      this.model.group.rotation.y = this.attackFacing;
+      this.warning.visible = true;
+      (this.warning.material as THREE.MeshBasicMaterial).opacity = 0.12 + windup * 0.26;
       if (this.timer <= 0) {
         this.state = 'attack';
-        this.timer = 0.21;
-        if (distance < range + 0.5) {
+        this.timer = STRIKE_DURATION[this.type];
+        attack = 0.0001;
+        windup = 0;
+      }
+    } else if (this.state === 'attack') {
+      attack = Math.min(1, Math.max(0.0001, 1 - this.timer / STRIKE_DURATION[this.type]));
+      this.model.group.rotation.y = this.attackFacing;
+      if (!this.impactDone && attack >= STRIKE_CONTACT) {
+        this.impactDone = true;
+        this.audio.play(this.type === 'golem' ? 'heavy' : 'swing');
+        const hitX = this.position.x + Math.sin(this.attackFacing) * range;
+        const hitZ = this.position.z + Math.cos(this.attackFacing) * range;
+        this.effects.burst(hitX, this.type === 'golem' ? 0.1 : 0.8, hitZ, 0xe9c399, 7, 1.5);
+        if (
+          inAttackArc(
+            this.position.x,
+            this.position.z,
+            this.attackFacing,
+            player.position.x,
+            player.position.z,
+            range + 0.5,
+            0.85,
+          )
+        ) {
           const result = player.takeDamage(this.profile.damage, this.position.x, this.position.z);
           if (result === 'blocked') {
             this.state = 'recover';
@@ -169,11 +226,9 @@ export class Enemy {
           }
         }
       }
-    } else if (this.state === 'attack') {
-      attack = 1;
       if (this.timer <= 0) {
         this.state = 'recover';
-        this.timer = this.type === 'armor' ? 0.9 : 1;
+        this.timer = this.type === 'golem' ? 1.35 : 1;
       }
     } else if (this.state === 'recover') {
       if ((this.type === 'spider' || this.type === 'wolf') && distance < 3) {
@@ -187,7 +242,7 @@ export class Enemy {
       }
       if (this.timer <= 0) this.state = 'chase';
     }
-    this.model.animate(time, moving, windup, attack);
+    this.model.animate(time, moving, windup, attack, 0, this.stagger);
     this.barGroup.visible = this.health < this.maxHealth || this.state === 'prepare';
     this.bar.scale.x = Math.max(0, this.health / this.maxHealth);
     this.bar.position.x = -(1 - this.health / this.maxHealth) * 0.5;
@@ -216,7 +271,14 @@ export class Enemy {
     )
       return false;
     this.lastHit = player.attackId;
-    this.health = Math.max(0, this.health - PLAYER.damage);
+    return this.receiveDamage(PLAYER.damage, player);
+  }
+  receiveDamage(amount: number, player: Player) {
+    if (this.state === 'dead' || amount <= 0) return false;
+    this.health = Math.max(0, this.health - amount);
+    this.distracted = 0;
+    this.stagger = 0.3;
+    this.warning.visible = false;
     this.effects.burst(this.position.x, 1, this.position.z, 0xc5b28d, 14, 4);
     this.audio.play('hit');
     this.state = this.health === 0 ? 'dead' : 'recover';
@@ -238,6 +300,9 @@ export class Enemy {
     this.timer = 0;
     this.deadTime = 0;
     this.lastHit = -1;
+    this.impactDone = false;
+    this.stagger = this.distracted = 0;
+    this.warning.visible = false;
     this.position.copy(this.origin);
     this.model.group.rotation.set(0, 0, 0);
     this.model.group.visible = true;

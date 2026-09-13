@@ -8,5 +8,5 @@ export async function loadCreatureAssets() {
     data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
     '',
   );
-  return new CastleCreatureAssets(gltf.scene);
+  return new CastleCreatureAssets(gltf.scene, gltf.animations);
 }

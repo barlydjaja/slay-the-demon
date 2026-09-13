@@ -6,6 +6,7 @@ import { seededRandom } from '../game/math';
 import { box, sphere } from './primitives';
 import { materials as m, glowTexture } from './materials';
 import { CastleAssets } from './CastleAssets';
+import { CastleExit } from './CastleExit';
 export interface Torch {
   position: THREE.Vector3;
   flame: THREE.Mesh;
@@ -34,15 +35,9 @@ export class Castle {
   zoneGroups: THREE.Group[] = [];
   shrine = new THREE.Group();
   exitOpened = false;
-  private exit = new THREE.Group();
+  readonly exit: CastleExit;
   private crystal!: THREE.Object3D;
   private exitBlocker: Obstacle;
-  private daylight = new THREE.MeshBasicMaterial({
-    color: 0xffe0a0,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-  });
   private rng = seededRandom();
   private glow = glowTexture();
   private fog: THREE.Mesh[] = [];
@@ -61,12 +56,8 @@ export class Castle {
     });
     for (let i = 0; i < AREAS.length; i++) this.buildArea(i);
     this.exitBlocker = collision.add(0, -150, 8, 1);
-    this.exit.position.z = -150;
-    this.exit.add(assets.clone('portcullis'));
-    this.group.add(this.exit);
-    const dawn = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 7), this.daylight);
-    dawn.position.set(0, 3.5, -152.8);
-    this.group.add(dawn);
+    this.exit = new CastleExit(assets);
+    this.group.add(this.exit.group);
     this.makeShrine();
     this.memories = [
       {
@@ -446,9 +437,8 @@ export class Castle {
   }
   update(time: number, dt: number, playerZ: number) {
     if (this.exitOpened) {
-      this.exit.position.y = Math.min(7.6, this.exit.position.y + dt * 2.1);
-      this.daylight.opacity = Math.min(0.85, this.daylight.opacity + dt * 0.3);
-      if (this.exit.position.y > 4) this.exitBlocker.active = false;
+      this.exit.update(dt, time, true);
+      if (this.exit.ready) this.exitBlocker.active = false;
     }
     for (const t of this.torches) {
       const flicker =
@@ -485,9 +475,8 @@ export class Castle {
   }
   resetExit() {
     this.exitOpened = false;
-    this.exit.position.y = 0;
+    this.exit.reset();
     this.exitBlocker.active = true;
-    this.daylight.opacity = 0;
   }
   reset() {
     this.resetExit();

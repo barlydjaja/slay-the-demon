@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ReaperModel } from './CreatureModels';
 import { BossHazards } from './BossHazards';
+import { BossBlades } from './BossBlades';
 import type { CastleCreatureAssets } from './CastleCreatureAssets';
 import { BOSS, BOSS_AGGRO_DISTANCE, PLAYER } from '../game/config';
 import { CollisionSystem } from '../game/CollisionSystem';
@@ -10,6 +11,8 @@ import { AudioManager } from '../audio/AudioManager';
 import { angleDamp, clamp, inAttackArc } from '../game/math';
 import {
   BOSS_ATTACKS,
+  PHASE_DURATION,
+  DIVE_IMPACT,
   REAPING_BEATS,
   RUSH,
   SOUL_RING,
@@ -24,6 +27,10 @@ import {
 export class Boss {
   readonly model: ReaperModel;
   readonly hazards: BossHazards;
+  readonly blades: BossBlades;
+  private landing = new THREE.Vector3();
+  private leapStart = new THREE.Vector3();
+  private landingMark = new THREE.Group();
   state: BossState = 'idle';
   phase = 1;
   health: number = BOSS.health;
@@ -55,9 +62,29 @@ export class Boss {
     this.model = new ReaperModel(assets.clone('reaper'));
     this.position.set(0, 0, BOSS.spawnZ);
     this.hazards = new BossHazards(assets.clone('grave_spire'), effects, audio);
+    this.blades = new BossBlades(assets.clone('widow_blade'));
+    this.blades.onDamage = (blocked) => this.onDamage(blocked);
     this.hazards.onDamage = (blocked) => this.onDamage(blocked);
     this.hazards.onImpact = () => this.onImpact();
-    this.telegraphs.add(this.aimTells, this.hazards.group);
+    this.telegraphs.add(this.aimTells, this.hazards.group, this.blades.group, this.landingMark);
+    for (const fill of [false, true]) {
+      const ring = new THREE.Mesh(
+        fill
+          ? new THREE.CircleGeometry(BOSS_ATTACKS.dive.range, 64)
+          : new THREE.RingGeometry(BOSS_ATTACKS.dive.range - 0.13, BOSS_ATTACKS.dive.range, 64),
+        new THREE.MeshBasicMaterial({
+          color: 0xf0739b,
+          transparent: true,
+          opacity: fill ? 0.12 : 0.8,
+          depthWrite: false,
+          fog: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      this.landingMark.add(ring);
+    }
+    this.landingMark.visible = false;
     for (const kind of ['slash', 'heavy', 'lunge', 'sweep'] as AttackKind[]) {
       const group = new THREE.Group(),
         data = BOSS_ATTACKS[kind];
@@ -146,12 +173,10 @@ export class Boss {
     const distance = Math.hypot(dx, dz),
       angle = Math.atan2(dx, dz);
     let moving = false,
-      windup = 0,
-      attack = 0,
-      ritual = 0;
+      windup = 0;
     if (this.state === 'dead') {
       this.deadTime += dt;
-      this.model.animate(time, false, 0, 0, this.deadTime * 0.5);
+      this.model.animateState('dead', this.attackKind, this.phase, 0, time, this.deadTime);
       this.clearWarnings();
       return;
     }
@@ -163,7 +188,8 @@ export class Boss {
     ) {
       this.phase = 2;
       this.state = 'phase';
-      this.timer = 2.2;
+      this.timer = PHASE_DURATION;
+      this.attackIndex = 0;
       this.clearWarnings();
       this.audio.play('reaperScream');
       this.effects.burst(this.position.x, 3.8, this.position.z, 0xb894eb, 38, 5);
@@ -177,7 +203,6 @@ export class Boss {
         this.onAggro();
       }
     } else if (this.state === 'wake' || this.state === 'phase') {
-      ritual = Math.sin((Math.PI * Math.max(0, this.timer)) / (this.state === 'wake' ? 2.7 : 2.2));
       this.model.group.rotation.y = angleDamp(this.model.group.rotation.y, angle, 2, dt);
       if (this.timer <= 0) {
         this.state = 'chase';
@@ -186,7 +211,7 @@ export class Boss {
     } else if (this.state === 'chase') {
       this.model.group.rotation.y = angleDamp(this.model.group.rotation.y, angle, 3.2, dt);
       if ((distance < 6.1 && this.timer <= 0) || (distance > 9 && this.timer < -1.1)) {
-        this.prepare(chooseBossAttack(this.attackIndex++, distance), angle);
+        this.prepare(chooseBossAttack(this.attackIndex++, distance, this.phase), angle, player);
       } else {
         const speed = BOSS.speed * (this.phase === 2 ? 1.24 : 1);
         this.move((dx / (distance || 1)) * speed * dt, (dz / (distance || 1)) * speed * dt);
@@ -196,7 +221,8 @@ export class Boss {
       const data = BOSS_ATTACKS[this.attackKind];
       const elapsed = data.windup - this.timer;
       windup = clamp(elapsed / data.windup, 0, 1);
-      if (windup < 0.5) this.targetAngle = angle;
+      if (windup < 0.5 && !['reave', 'dive', 'loom'].includes(this.attackKind))
+        this.targetAngle = angle;
       this.model.group.rotation.y = this.targetAngle;
       if (this.attackKind === 'hunt') {
         while (this.marksDone < 3 && elapsed >= this.marksDone * 0.36) {
@@ -223,7 +249,6 @@ export class Boss {
       const duration = attackDuration(this.attackKind, this.phase);
       const elapsed = duration - this.timer,
         before = Math.max(0, elapsed - dt);
-      attack = Math.max(0.001, elapsed);
       if (this.attackKind === 'slash' || this.attackKind === 'heavy') {
         const beats: readonly number[] = this.attackKind === 'heavy' ? [0.32] : REAPING_BEATS;
         const count = this.attackKind === 'heavy' ? 1 : this.phase === 2 ? 3 : 2;
@@ -290,7 +315,49 @@ export class Boss {
           this.damageDone = true;
         }
       }
+      if (this.attackKind === 'dive') {
+        const progress = clamp(elapsed / DIVE_IMPACT, 0, 1);
+        const desired = this.leapStart.clone().lerp(this.landing, progress);
+        // The leap clears floor obstacles; the committed landing was checked before takeoff.
+        this.position.copy(desired);
+        if (!this.damageDone && elapsed >= DIVE_IMPACT) {
+          this.damageDone = true;
+          this.landingMark.visible = false;
+          this.audio.play('graveMark');
+          this.onImpact();
+          this.effects.burst(this.position.x, 0.2, this.position.z, 0xb588b9, 36, 6);
+          if (this.position.distanceTo(player.position) <= data.range + PLAYER.radius)
+            this.damage(player);
+        }
+        // Phase II follows the landing with an expanding band; its empty interior stays safe.
+        if (this.phase === 2 && elapsed >= DIVE_IMPACT) {
+          const r0 =
+            data.range + clamp((before - DIVE_IMPACT) / (duration - DIVE_IMPACT), 0, 1) * 4.5;
+          const r1 =
+            data.range + clamp((elapsed - DIVE_IMPACT) / (duration - DIVE_IMPACT), 0, 1) * 4.5;
+          this.setWave(r1);
+          const d = this.position.distanceTo(player.position);
+          if (
+            !this.beatsDone &&
+            d >= r0 - SOUL_RING.width / 2 - PLAYER.radius &&
+            d <= r1 + SOUL_RING.width / 2 + PLAYER.radius
+          ) {
+            this.beatsDone = 1;
+            this.damage(player);
+          }
+        }
+      }
+      if (this.attackKind === 'reave' || this.attackKind === 'loom') {
+        this.blades.update(before, elapsed, player, data.damage);
+        const beats = this.attackKind === 'loom' ? [0.15, 0.65, 1.2, 1.7] : [0.22, 1.54];
+        while (this.beatsDone < beats.length && elapsed >= beats[this.beatsDone]) {
+          this.beatsDone++;
+          this.audio.play('soulRing');
+        }
+      }
       if (this.timer <= 0) {
+        this.blades.reset();
+        this.landingMark.visible = false;
         this.state = 'recover';
         this.timer = data.recovery * (this.phase === 2 ? 0.8 : 1);
         this.wave.visible = false;
@@ -314,7 +381,14 @@ export class Boss {
       }
     }
     this.hazards.update(dt, player);
-    this.model.animate(time, moving, windup, attack, 0, this.attackKind, this.phase, ritual);
+    if (this.state === 'prepare' && (this.attackKind === 'reave' || this.attackKind === 'loom'))
+      this.blades.update(
+        -this.timer - dt,
+        -this.timer,
+        player,
+        BOSS_ATTACKS[this.attackKind].damage,
+      );
+    this.model.animateState(this.state, this.attackKind, this.phase, this.timer, time);
     // The rush lane remains anchored where the committed attack began.
     if (this.state !== 'attack' || this.attackKind !== 'lunge')
       this.aimTells.position.set(this.position.x, 0.075, this.position.z);
@@ -347,7 +421,7 @@ export class Boss {
       separation < 2.25 &&
       separation > 0.01 &&
       this.active &&
-      !(this.state === 'attack' && this.attackKind === 'lunge')
+      !(this.state === 'attack' && (this.attackKind === 'lunge' || this.attackKind === 'dive'))
     )
       this.collision.move(
         player.position,
@@ -356,13 +430,24 @@ export class Boss {
         PLAYER.radius,
       );
   }
-  private prepare(kind: AttackKind, angle: number) {
+  private prepare(kind: AttackKind, angle: number, player: Player) {
     this.attackKind = kind;
     this.targetAngle = angle;
     this.state = 'prepare';
     this.timer = BOSS_ATTACKS[kind].windup;
     this.marksDone = 0;
     this.audio.play('telegraph');
+    if (kind === 'reave') this.blades.reave(this.position, angle);
+    if (kind === 'loom') this.blades.loom(player.position);
+    if (kind === 'dive') {
+      this.leapStart.copy(this.position);
+      this.landing.set(clamp(player.position.x, -8, 8), 0, clamp(player.position.z, -145, -121));
+      if (this.collision.blocked(this.landing.x, this.landing.z, BOSS.radius))
+        this.landing.copy(this.position);
+      this.landingMark.position.copy(this.landing);
+      this.landingMark.position.y = 0.09;
+      this.landingMark.visible = true;
+    }
     if (kind === 'eruption') {
       const count = this.phase === 2 ? 10 : 8;
       for (let i = 0; i < count; i++) {
@@ -403,6 +488,8 @@ export class Boss {
   }
   private clearWarnings() {
     this.hazards.reset();
+    this.blades.reset();
+    this.landingMark.visible = false;
     this.wave.visible = false;
     for (const group of this.indicators.values()) group.visible = false;
   }
@@ -416,6 +503,9 @@ export class Boss {
       !this.active ||
       this.state === 'wake' ||
       this.state === 'phase' ||
+      (this.state === 'attack' &&
+        this.attackKind === 'dive' &&
+        attackDuration('dive', this.phase) - this.timer < DIVE_IMPACT) ||
       !player.hitWindow ||
       this.lastHit === player.attackId
     )

@@ -10,6 +10,9 @@ export class Lighting {
   private nextLightning = 14;
   private flash = 0;
   lightning = false;
+  bossPhase = 1;
+  bossPosition = new THREE.Vector3(0, 0, -130);
+  private bossKey = new THREE.SpotLight(0xb8cbdc, 0, 26, 0.8, 0.85, 1.5);
   private nearest: { i: number; d: number }[] = [];
   private selectionTimer = 0;
   constructor(
@@ -43,9 +46,10 @@ export class Lighting {
     }
     this.nearest = torches.map((_, i) => ({ i, d: 0 }));
     this.rim.position.set(0, 6, -139);
-    scene.add(this.rim);
+    scene.add(this.rim, this.bossKey, this.bossKey.target);
   }
   update(dt: number, time: number, x: number, z: number, boss: boolean, victory: boolean) {
+    const unbound = boss && this.bossPhase === 2;
     this.nextLightning -= dt;
     this.lightning = false;
     if (this.nextLightning <= 0) {
@@ -62,19 +66,19 @@ export class Lighting {
           : this.flash * 1.8;
     this.sun.intensity = damp(
       this.sun.intensity,
-      (victory ? 4.2 : boss ? 2.6 : 3.2) + pulse * 4,
+      (victory ? 2.9 : unbound ? 1.9 : boss ? 2.6 : 3.2) + pulse * 4,
       25,
       dt,
     );
     this.ambient.intensity = damp(
       this.ambient.intensity,
-      victory ? 1.95 : boss ? 1.15 : 1.6,
+      victory ? 1.3 : unbound ? 1.05 : boss ? 1.15 : 1.6,
       1.4,
       dt,
     );
     (this.scene.fog as THREE.FogExp2).density = damp(
       (this.scene.fog as THREE.FogExp2).density,
-      victory ? 0.014 : boss ? 0.03 : 0.026,
+      victory ? 0.019 : unbound ? 0.03 : boss ? 0.03 : 0.026,
       1,
       dt,
     );
@@ -95,6 +99,15 @@ export class Lighting {
       light.position.copy(t.position);
       light.intensity = 30 + Math.sin(time * 9 + t.phase) * 4;
     });
-    this.rim.intensity = boss ? 22 : 11;
+    this.bossKey.position.set(this.bossPosition.x - 4, 9, this.bossPosition.z + 7);
+    this.bossKey.target.position.copy(this.bossPosition).y = 3.5;
+    this.bossKey.intensity = damp(this.bossKey.intensity, boss ? (unbound ? 210 : 155) : 0, 2, dt);
+    this.rim.position.set(this.bossPosition.x + 1, 6, this.bossPosition.z - 5);
+    this.rim.color.lerp(new THREE.Color(unbound ? 0xd74a83 : 0x9c9ed0), Math.min(1, dt * 1.5));
+    this.rim.intensity = unbound ? 40 + Math.sin(time * 1.8) * 5 : boss ? 22 : 11;
+    (this.scene.fog as THREE.FogExp2).color.lerp(
+      new THREE.Color(unbound ? 0x231e30 : 0x152732),
+      Math.min(1, dt),
+    );
   }
 }

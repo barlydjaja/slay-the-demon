@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / 'public/models'
 REVIEW = ROOT / 'art/review'
 OUT.mkdir(parents=True, exist_ok=True); REVIEW.mkdir(parents=True, exist_ok=True)
+bpy.context.preferences.filepaths.save_version = 0
 random.seed(417)
 bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete(use_global=False)
 for datablock in list(bpy.data.materials): bpy.data.materials.remove(datablock)
@@ -16,6 +17,7 @@ for datablock in list(bpy.data.materials): bpy.data.materials.remove(datablock)
 def linear(c): return c/12.92 if c<=.04045 else ((c+.055)/1.055)**2.4
 def rgba(hex): return tuple(linear(int(hex[i:i+2],16)/255) for i in (0,2,4))+(1,)
 PALETTE = dict(wood='755034', woodlight='b28755', bark='64513b', cream='eadbb6', stone='869088', stoneLight='aeb2a2', dark='2f4542', roof='b16343', rooflight='d88e62', teal='447b79', leaf='41744a', leaflight='789b48', leafgold='a6b657', grass='679747', skin='c49976', hair='e6e1c9', eye='ffe298', iron='465658', soil='aa9372', flower='f6d16c', purple='9e86ad')
+PALETTE.update(leaf='304f49', leaflight='526755', leafgold='788065', grass='495f50', soil='777568', roof='675d59', rooflight='8a786c', stone='646f70', stoneLight='929790', wood='514b40', woodlight='81725b')
 MAT=bpy.data.materials.new('Meadow · vertex-painted'); MAT.use_nodes=True
 bsdf=MAT.node_tree.nodes.get('Principled BSDF'); bsdf.inputs['Roughness'].default_value=.88
 vc=MAT.node_tree.nodes.new('ShaderNodeVertexColor'); vc.layer_name='Color'; MAT.node_tree.links.new(vc.outputs['Color'],bsdf.inputs['Base Color'])
@@ -418,14 +420,15 @@ def creatures():
   m.tube([(x,y,z),(x*1.4,y+.46,z-.2)],[.12,0],'bark',5)
  m.tube([(0,1.1,-.95),(.15,1.4,-1.5),(.35,1.8,-1.95)],[.22,.17,.015],'dark',7)
  body=m.object('wolf_body',root)
- head=Mesh();head.ellipsoid((0,1.43,.98),(.4,.39,.47),'dark',12,7)
+ head=Mesh();eyes=Mesh();head.ellipsoid((0,1.43,.98),(.4,.39,.47),'dark',12,7)
  head.ellipsoid((0,1.24,1.38),(.25,.23,.42),'bark',10,6)
  head.ellipsoid((0,1.3,1.72),(.19,.12,.11),'dark',10,5)
  for s in [-1,1]:
   head.tube([(s*.25,1.65,.8),(s*.34,2.06,.72)],[.18,.005],'bark',5)
-  head.ellipsoid((s*.3,1.48,1.27),(.07,.048,.035),'eye',8,4)
+  eyes.ellipsoid((s*.3,1.48,1.27),(.07,.048,.035),'eye',8,4)
   for k in range(2):head.tube([(s*.21,1.15,1.25+k*.22),(s*.21,.98,1.25+k*.22)],[.038,0],'cream',5)
- head.object('wolf_head',body,(0,1.4,.95))
+ head_obj=head.object('wolf_head',body,(0,1.4,.95))
+ eyes_obj=eyes.object('wolf_eyes',head_obj,(0,1.4,.95));eyes_obj.location=(0,0,0)
  for i,(x,z) in enumerate([(-.4,-.63),(.4,-.63),(-.4,.55),(.4,.55)]):
   limb=Mesh();limb.tube([(x,.95,z),(x,.48,z+.12),(x,.15,z+.02)],[.17,.115,.095],'dark',7);limb.ellipsoid((x,.1,z+.13),(.15,.11,.26),'bark',9,5)
   for k in range(3):limb.tube([(x+(k-1)*.07,.09,z+.26),(x+(k-1)*.07,.035,z+.4)],[.035,0],'cream',4)
@@ -436,10 +439,11 @@ def creatures():
   m.tube([(s*.24,2.28,.5),(s*.34,1.77,.62),(s*.14,1.36,.55)],[.042,.035,.008],'eye',4)
  for i in range(8):m.ellipsoid(((random.random()-.5)*1.25,2.24+random.random()*.12,(random.random()-.5)*.7),(.32,.12,.27),'leaflight',7,3,.15)
  body=m.object('golem_body',root)
- h=Mesh();h.ellipsoid((0,2.7,.02),(.53,.49,.47),'dark',8,6,.09)
- for s in [-1,1]:h.box((s*.21,2.72,.46),(.17,.075,.04),'eye');h.box((s*.21,2.87,.45),(.25,.13,.11),'stone')
+ h=Mesh();eyes=Mesh();h.ellipsoid((0,2.7,.02),(.53,.49,.47),'dark',8,6,.09)
+ for s in [-1,1]:eyes.box((s*.21,2.72,.46),(.17,.075,.04),'eye');h.box((s*.21,2.87,.45),(.25,.13,.11),'stone')
  h.ellipsoid((-.13,3.11,-.02),(.5,.16,.44),'leaflight',8,4,.15)
- h.object('golem_head',body,(0,2.65,0))
+ head_obj=h.object('golem_head',body,(0,2.65,0))
+ eyes_obj=eyes.object('golem_eyes',head_obj,(0,2.65,0));eyes_obj.location=(0,0,0)
  for i,s in enumerate([-1,1]):
   arm=Mesh();arm.ellipsoid((s*1.08,2.2,0),(.55,.55,.53),'stoneLight',8,5,.16)
   arm.tube([(s*1.08,2.2,0),(s*1.3,1.44,.06),(s*1.34,.94,.22)],[.35,.36,.44],'stone',7)
@@ -448,14 +452,15 @@ def creatures():
   arm.object('golem_limb_'+str(i),body,(s*1.03,2.1,0))
  root=asset('thornling');m=Mesh();m.tube([(0,.2,0),(.1,.7,0),(0,1.25,0)],[.27,.33,.2],'bark',8)
  for s in [-1,1]:m.tube([(s*.16,.35,0),(s*.24,.08,.23),(s*.4,.02,.31)],[.12,.1,.015],'wood',6)
- body=m.object('thornling_body',root);h=Mesh();h.ellipsoid((0,1.48,0),(.38,.33,.35),'dark',11,6)
+ body=m.object('thornling_body',root);h=Mesh();eyes=Mesh();h.ellipsoid((0,1.48,0),(.38,.33,.35),'dark',11,6)
  h.ellipsoid((0,1.8,0),(.84,.29,.76),'roof',12,6,.035)
  for i in range(7):
   a=i*math.tau/7;x,z=math.sin(a)*.56,math.cos(a)*.49
   h.ellipsoid((x,1.97,z),(.11,.025,.1),'cream',6,3)
   h.tube([(x,1.88,z),(x*1.25,2.21,z*1.2)],[.09,0],'bark',5)
- for s in [-1,1]:h.ellipsoid((s*.15,1.5,.32),(.065,.043,.033),'eye',8,4)
- h.object('thornling_head',body,(0,1.48,0))
+ for s in [-1,1]:eyes.ellipsoid((s*.15,1.5,.32),(.065,.043,.033),'eye',8,4)
+ head_obj=h.object('thornling_head',body,(0,1.48,0))
+ eyes_obj=eyes.object('thornling_eyes',head_obj,(0,1.48,0));eyes_obj.location=(0,0,0)
  for i,s in enumerate([-1,1]):
   a=Mesh();a.tube([(s*.3,1.09,0),(s*.58,.8,.02),(s*.85,1.05,.12)],[.11,.07,.005],'bark',6)
   a.tube([(s*.59,.83,.03),(s*.8,.65,.1)],[.05,0],'woodlight',5)
@@ -490,7 +495,7 @@ def terrain():
   dist=abs(x-path_x(z));town=math.hypot(x-16,z+23);branch=abs(z-(x*.8-5)) if -24<x<7 else 100
   earth=max(0,1-dist/2.35,max(0,1-town/9),max(0,1-branch/1.35)*.75)
   n=.5+.5*math.sin(x*.49+math.sin(z*.33))*math.cos(z*.59+x*.17)
-  base=(.29+n*.045,.45+n*.06,.21+n*.025);soil=(.61,.52,.35)
+  base=(.22+n*.035,.30+n*.04,.25+n*.025);soil=(.43,.41,.34)
   mix=max(0,min(1,earth*1.45));rgb=tuple(base[k]*(1-mix)+soil[k]*mix for k in range(3))
   colors.append(tuple(linear(c) for c in rgb)+(1,))
  faces=[]
@@ -507,8 +512,42 @@ def terrain():
  root['heightfield']=json.dumps(dict(minX=-52,minZ=-80,columns=width,rows=rows,step=1,heights=heights),separators=(',',':'))
  return root
 
+def fortifications():
+ # Four-metre modules with foundations extending into uneven exported terrain.
+ m=Mesh();m.box((0,1.3,0),(4,4.4,1.15),'dark')
+ for row in range(6):
+  for i in range(4):
+   x=-1.5+i
+   m.box((x,row*.58+.1,0),(.96,.55,1.25),'stone' if (row+i)%3 else 'stoneLight')
+ m.box((0,3.39,0),(4.08,.2,1.38),'stoneLight')
+ for x in [-1.65,-.55,.55,1.65]:m.box((x,3.78,0),(.7,.65,1.32),'stone')
+ for x in [-1.85,1.85]:m.box((x,1.4,.74),(.25,3.2,.35),'wood')
+ asset('village_wall',m)
+ m=Mesh()
+ for x in [-4.5,4.5]:
+  m.box((x,1.6,0),(1,5.2,1.6),'stone');m.box((x,4.22,0),(1.25,.2,1.85),'stoneLight')
+  m.box((x,4.55,0),(1,.65,1.6),'stone')
+  for y in [.4,1.4,2.4,3.4]:m.box((x,y,.82),(1.05,.09,.08),'stoneLight')
+ m.box((0,4.02,0),(8.1,.7,1.1),'wood');m.box((0,4.43,0),(10.4,.18,1.85),'woodlight')
+ m.box((0,4.2,.59),(1.7,.54,.09),'dark')
+ for x in [-.5,0,.5]:m.box((x,4.2,.65),(.08,.35,.05),'flower')
+ for side in [-1,1]:
+  # Open reinforced gate leaves lie along the passage; the opening is genuinely empty.
+  for z in [-.4,-1.2,-2,-2.8]:m.box((side*3.82,1.4,z),(.2,2.8,.77),'wood')
+  for y in [.4,2.35]:m.box((side*3.68,y,-1.6),(.13,.16,3.3),'iron')
+ asset('village_gate',m)
+ m=Mesh();m.box((0,1.8,0),(2.7,5.8,2.7),'stone')
+ for y in [.3,1.3,2.3,3.3,4.3]:m.box((0,y,0),(2.77,.1,2.77),'stoneLight')
+ m.box((0,4.8,0),(3.15,.35,3.15),'stoneLight')
+ for x,z in [(-1.1,-1.1),(-1.1,1.1),(1.1,-1.1),(1.1,1.1)]:m.box((x,5.26,z),(.83,.65,.83),'stone')
+ for z in [-1.36,1.36]:m.box((0,3.15,z),(.2,.65,.025),'dark')
+ asset('village_tower',m)
+
 # Build the complete reusable library.
-oak();oak('golden_oak',True);birch();pine();rock();plants();cottage();cottage('longhouse',True);well();windmill();props();ruins();human('elder',True);human('villager');human('child',child=True);creatures();terrain()
+oak();oak('golden_oak',True);birch();pine();rock();plants();cottage();cottage('longhouse',True);well();windmill();props();ruins();human('elder',True);human('villager');human('child',child=True);creatures();terrain();fortifications()
+eye_mat=MAT.copy();eye_mat.name='Greenfields · embers in the undergrowth'
+eye_shader=eye_mat.node_tree.nodes.get('Principled BSDF');eye_shader.inputs['Emission Color'].default_value=rgba('e3b879');eye_shader.inputs['Emission Strength'].default_value=2.1
+for name in ['wolf_eyes','golem_eyes','thornling_eyes']:bpy.data.objects[name].data.materials[0]=eye_mat
 bpy.context.view_layer.update()
 for name,root in ASSETS.items():
  objects=[o for o in root.children_recursive if o.type=='MESH']

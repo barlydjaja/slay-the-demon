@@ -1,3 +1,6 @@
+import { RobotAssets } from '../src/player/RobotAssets';
+import { loadMachineAssets } from './fixtures/machine-assets';
+const machine = await loadMachineAssets();
 import {
   FirstlightQuest,
   FIRSTLIGHT_PARTS,
@@ -60,6 +63,7 @@ async function testAssets() {
   return new FieldAssets(gltf.scene);
 }
 FieldAssets.load = testAssets;
+RobotAssets.load = loadMachineAssets;
 FirstlightAssets.load = loadFirstlightAssets;
 
 test('every Blender prefab has finite geometry, vertex colors, UVs and usable animation pivots', async () => {
@@ -67,7 +71,7 @@ test('every Blender prefab has finite geometry, vertex colors, UVs and usable an
   const manifest = JSON.parse(
     await readFile(new URL('../art/blender/asset-manifest.json', import.meta.url), 'utf8'),
   );
-  assert.equal(Object.keys(manifest).length, 35);
+  assert.equal(Object.keys(manifest).length, 38);
   for (const name of Object.keys(manifest)) {
     const root = assets.clone(name);
     let meshCount = 0;
@@ -217,7 +221,7 @@ test('wolves cancel an imminent attack and retreat when the player reaches First
     effects = new Effects(true),
     audio = new AudioManager();
   const enemy = new Enemy('wolf', 5, 2, -18, c, effects, audio, (await testAssets()).clone('wolf'));
-  const player = new Player(c, effects, audio);
+  const player = new Player(c, effects, audio, machine);
   player.position.set(2.2, 0, -18);
   assert.ok(isFieldSanctuary(player.position.x, player.position.z));
   enemy.position.set(3, 0, -18);
@@ -233,7 +237,7 @@ test('field enemies retain distinct combat timing and deaths cannot award healin
   const c = new CollisionSystem(FIELD_BOUNDS),
     effects = new Effects(true),
     audio = new AudioManager();
-  const player = new Player(c, effects, audio);
+  const player = new Player(c, effects, audio, machine);
   player.position.set(0, 0, 0);
   player.facing = 0;
   player.hitWindow = true;
@@ -313,6 +317,8 @@ function gameHarness() {
         loadingProgress.push(progress);
       },
       chapter() {},
+      disciplines() {},
+      ability() {},
       memory() {},
       saveStatus() {},
       continueAvailable() {},
@@ -522,4 +528,78 @@ test('inspection routes never overwrite normal journey progress', async () => {
   game.firstlight.accept();
   game.persistJourney();
   disposeScene(game.scene);
+});
+
+test('village masonry encloses all four sides, the gate remains passable, and shelter follows the walls', async () => {
+  const { game } = gameHarness();
+  await game.enterFields();
+  for (let z = -40; z < -11; z += 0.5) {
+    assert.ok(game.collision.blocked(0, z, 0.47), `west wall at ${z}`);
+    assert.ok(game.collision.blocked(34, z, 0.47), `east wall at ${z}`);
+  }
+  for (let x = 1; x < 34; x += 0.5) {
+    assert.ok(game.collision.blocked(x, -42, 0.47), `north wall at ${x}`);
+    if (x < 10 || x > 18) assert.ok(game.collision.blocked(x, -10, 0.47), `south wall at ${x}`);
+  }
+  const gate = { x: 14, z: -7 };
+  game.collision.move(gate, 0, -8, 0.47);
+  assert.ok(gate.z < -14.5, 'walking through the gate must work');
+  const masonry = { x: 24, z: -7 };
+  game.collision.move(masonry, 0, -8, 0.47);
+  assert.ok(masonry.z > -9, 'even a high-speed move stops outside the wall');
+  assert.equal(isFieldSanctuary(16, -9), false);
+  assert.equal(isFieldSanctuary(-1, -23), false);
+  assert.equal(isFieldSanctuary(29, -36), true, 'the mill is now inside the protected village');
+  disposeScene(game.scene);
+});
+
+test('well selection pauses gameplay, persists each choice, and cannot switch remotely or before restoration', async () => {
+  const { game } = gameHarness();
+  let raw: string | null = null;
+  game.preview = false;
+  game.journeySave = new JourneySave({
+    getItem: () => raw,
+    setItem: (_, value) => {
+      raw = value;
+    },
+    removeItem() {},
+  });
+  await game.enterFields();
+  game.player.reset(-23, 13.8);
+  game.openDisciplines();
+  assert.equal(game.state, GameState.PLAYING);
+  game.firstlight.accept();
+  game.firstlight.recover('winding');
+  game.firstlight.recover('sunwheel');
+  game.firstlight.restore();
+  for (const choice of ['stormblade', 'bulwark', 'wispkeeper']) {
+    game.player.stamina = 42;
+    game.player.abilityCooldown = 3;
+    game.openDisciplines();
+    assert.equal(game.state, GameState.DISCIPLINES);
+    assert.equal(isGameplay(game.state), false);
+    assert.equal(game.input.enabled, false);
+    game.chooseDiscipline(choice);
+    assert.equal(game.state, GameState.PLAYING);
+    assert.equal(game.input.enabled, true);
+    assert.equal(game.player.discipline, choice);
+    assert.equal(game.player.stamina, 42);
+    assert.equal(game.player.abilityCooldown, 3);
+    assert.equal(JSON.parse(raw!).discipline, choice);
+  }
+  game.player.reset(5, 17);
+  game.openDisciplines();
+  game.chooseDiscipline('stormblade');
+  assert.equal(game.player.discipline, 'wispkeeper');
+  const resumed = gameHarness().game;
+  await resumed.enterFields(game.journeySave.load());
+  assert.equal(resumed.player.discipline, 'wispkeeper');
+  resumed.player.health = 0;
+  resumed.state = GameState.PLAYER_DEAD;
+  resumed.audio.start = async () => {};
+  resumed.restart();
+  assert.equal(resumed.player.discipline, 'wispkeeper');
+  assert.equal(resumed.player.parryCharge, false);
+  disposeScene(game.scene);
+  disposeScene(resumed.scene);
 });

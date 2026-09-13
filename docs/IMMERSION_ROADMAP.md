@@ -47,7 +47,7 @@ Each stage must become playable, visually reviewed, and tested before the next s
 | 9     | **Arena-changing bosses**                           | A cathedral beast breaks pillars; a drowned knight redirects water; a walking bell tower becomes a climbable encounter         | Build one boss at a time; changes affect decisions, maintain escape paths, and reset completely on retry.               |
 | 10    | **The world restored**                              | Revisit the castle in sunlight, with plants and people occupying former battlegrounds                                          | Persistent before/after states, revised sound and dialogue, a final human moment, and optional exploration afterward.   |
 
-**Execution status:** Stage 1 implemented and locally verified. Stage 2 is next. Stages 2–10 are ordered follow-ups, not implemented features.
+**Execution status:** Stages 1 and 2 implemented and locally verified. Stage 3, The Rootbound City, is next. Stages 3–10 remain ordered follow-ups. The 13 September art/combat pass also makes the Greenfields gloomy, encloses Firstlight, and replaces the remaining procedural physical robot model with Blender assets.
 
 ## Stage 1: A Light to Come Home To
 
@@ -96,7 +96,7 @@ J opens a compact journal and pauses gameplay. A visible “World paused” labe
 
 ## Art, sound, and interaction direction
 
-Keep the hand-crafted Blender silhouettes and painted surfaces. The castle's cold stone and severe shadows should make Firstlight's timber, green slopes, warm metal, and human scale feel welcoming. New physical props and creatures are authored in Blender and retained as editable sources; UI, light, particles, and magical effects may use lightweight code geometry.
+Keep the hand-crafted Blender silhouettes and painted surfaces. Keep the world gloomy beyond human lanterns: cold stone, muted green slopes, overcast light, low mist, and readable creature silhouettes. Firstlight's timber, warm metal, enclosed walls, and human scale provide shelter within that darkness. New physical props and creatures are authored in Blender and retained as editable sources; UI, light, particles, and magical effects may use lightweight code geometry.
 
 Give every area a foreground, a middle-distance landmark, and an enticing far silhouette. Add height through paths and architecture as well as terrain. A few distinctive objects do more for place identity than uniform scatter density. NPCs must face plausible activity and keep their feet grounded.
 
@@ -138,7 +138,7 @@ Verification: **49 automated tests pass**. The build type-checks and produces a 
 
 The new library is below the 0.5 MB budget. Sustained frame-rate profiling, cross-browser storage checks, fresh-player quest timing, and subjective audio balance remain release/playtest work. The implementation does not establish retention metrics or prove that every player will find the experience immersive.
 
-### Next implementation: three robot disciplines
+### Stage 2 design: three robot disciplines
 
 Start with a free choice at Firstlight’s well after the capacitor is installed. Explain each discipline in one sentence, show its active ability and energy cost, and allow free switching at the sanctuary. Persist the choice; use one consistent ability key and a readable cooldown/energy indicator.
 
@@ -147,3 +147,31 @@ Start with a free choice at Firstlight’s well after the capacitor is installed
 - **Wispkeeper:** a small support wisp briefly distracts or marks a target. Helps control dangerous encounters; a cooldown prevents permanent distraction. Physical drone art is authored in Blender when this version needs a visible machine.
 
 Implement the choice/save foundation and one discipline at a time, then compare all three against the same field encounter. Verify cooldowns, single-hit accounting, safe-zone behavior, death/reset, journal pause, saved choice, and no free energy from switching. Keep the unmodified sword, guard, and dodge usable. Do not start the Rootbound City until each discipline offers an understandable, distinct decision and the first-time selection flow is reviewed.
+
+## Implementation record · Stage 2 and gloomy Firstlight
+
+Delivered locally on 13 September 2026:
+
+- Stormblade chains up to three targets (38 energy, 7 seconds); Bulwark consumes a fresh-guard charge for a stagger wave (26 energy, 6 seconds); Wispkeeper interrupts one creature with a physical Blender drone (30 energy, 10 seconds, 2.6-second distraction).
+- A paused, keyboard-accessible choice at the restored well, Q activation, energy/cooldown/charge guidance, and persistent choice. Version-1 saves without a discipline continue normally. Switching never resets cooldown or adds energy. Abilities respect collision and sanctuaries; death/retry cancels transient effects.
+- A Blender-authored machine, sword, and drone, retained as editable sources and exported GLB with measured manifests and reviewed Cycles renders. All physical game models now use Blender sources. UI, lighting, particles, water shading, and magical effects remain code-rendered.
+- Three Blender fortification prefabs: stone wall, open gatehouse, and corner tower. Four continuous village sides enclose homes, garden, and mill. Physical collision leaves one broad path entrance, and the sanctuary now follows the wall interior.
+- Muted terrain and foliage vertex paint, cold overcast lighting and mist, warm pools at the gate and well, emissive creature eyes, and a slower minor-key field score.
+- Continuous ordinary attack progress, shared animation/contact timing, one impact per strike, directional warnings, committed aim, distinct creature poses, hit reactions, and Reaper scythe motion aligned to every damage beat.
+
+Verification: 60 automated tests pass and the production build type-checks. Coverage includes all five ordinary attack types at different timestep sizes, rear evasion, authored pivots, Reaper beats, machine geometry, wall continuity and gate traversal, all quest routes, save migration, discipline persistence and retries, energy/cooldown rules, timed frontal guards, wall-blocked abilities, and drone cancellation. Blender renders cover the revised 38-asset field kit and both machine assets. Browser review covered the gloomy enclosed village, restored well picker, selected-discipline HUD, Stormblade and Wispkeeper activation, Bulwark's charge guidance, and journal pause. Bulwark's actual timed guard and shockwave are covered in the combat harness; human difficulty/balance and cross-device performance remain playtest work.
+
+### Next implementation: The Rootbound City
+
+Keep the same Blender-only physical-art pipeline and gloomy atmosphere. Build the compact city forest with three connected routes, one optional shortcut, reliable terrain and collision, two discoveries, and one finished encounter. Reuse the completed disciplines rather than adding another combat progression layer. Stages 4–10 stay in their original order.
+
+
+## Castle revision · Reaper and the far gate
+
+Delivered locally on 13 September 2026 in response to the castle feedback:
+
+- Nine attack patterns, including a returning spectral crescent, a marked aerial slam and phase-two crossing volleys. The second-phase slam also releases an expanding ring. Locked warnings, swept projectile hits and recovery windows preserve readable escape routes.
+- Twenty-four actual Blender clips replace procedural Reaper combat posing. The skeletal mantle unfolds, the jaw opens, and the phase-two silhouette persists through attacks, locomotion and recovery. The scythe follows the hand. The darker chamber uses focused cold light and a muted crimson rim to preserve visibility.
+- A Blender gatehouse with depth, masks, chains, counterweights and an animated portcullis replaces the flat yellow exit panel. Feathered light curtains and a cool spotlight cast the gate’s shadow over the floor. Animation height controls collision clearance and retry resets both.
+
+Verification: 68 automated tests pass and the production build succeeds. New checks cover clip duration/phase-pose preservation, landing timing and fixed targets, airborne clearance over masonry, phase-two wave safety, curved return paths, staggered volleys, slow-frame projectile collision, dodge and cancellation, passage depth, vertex-alpha feathering, shadow lighting and gate reset. Browser review covered the new attacks and the lit exit. Blender motion renders sample the actual NLA keyframes. Subjective encounter difficulty and sustained performance on other devices remain playtest work. The next master-plan stage remains the Rootbound City.

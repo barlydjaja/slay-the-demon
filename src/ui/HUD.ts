@@ -1,3 +1,4 @@
+import { DISCIPLINES, type Discipline } from '../combat/Disciplines';
 import { DEFAULT_SETTINGS, AREAS, BOSS, type Settings, type Quality } from '../game/config';
 import { FIRSTLIGHT_PARTS, type FirstlightQuest } from '../progression/FirstlightQuest';
 import { GameState } from '../game/GameState';
@@ -5,6 +6,8 @@ const crest = `<svg viewBox="0 0 48 60" fill="none" aria-hidden="true"><path d="
 const robotIcon = `<svg viewBox="0 0 50 50" fill="none" aria-hidden="true"><path d="M24 6v6m-3-6h6" stroke="#b9bfaa" stroke-width="2"/><rect x="11" y="13" width="28" height="24" rx="7" fill="#658c9d"/><path d="M14 34h22" stroke="#a2b7bb" stroke-width="3"/><rect x="15" y="20" width="20" height="9" rx="3" fill="#14232e"/><path d="M20 23v3m10-3v3" stroke="#cdf3f1" stroke-width="2.5"/><path d="M7 20v10m36-10v10" stroke="#8198a1" stroke-width="3"/></svg>`;
 export interface UIActions {
   play: () => void;
+  chooseDiscipline?: (choice: Discipline) => void;
+  leaveDisciplines?: () => void;
   journal?: () => void;
   newJourney?: () => void;
   advance: () => void;
@@ -40,7 +43,7 @@ export class HUD {
       <section id="menu" class="title-menu hidden"><p class="eyebrow"><span></span> IN THE SHADOW OF A FALLEN KINGDOM</p><h1><span>THE LAST</span><strong>HOPE</strong></h1><div class="title-rule"><i></i><b>✧</b><i></i></div><p class="tagline">A castle forgotten.<br>A demon awakened.<br><em>One machine remains.</em></p><div class="menu-buttons"><button id="play" class="play-button"><span class="button-glyph">⟡</span><span>BEGIN JOURNEY</span><span class="button-arrow">→</span></button><div class="secondary-buttons"><button id="menu-settings">SETTINGS</button><span>·</span><button id="credits-button">CREDITS</button><button id="new-journey" class="hidden">NEW JOURNEY</button></div></div><p id="journey-save-note" class="save-note">A SHORT TALE OF COURAGE &amp; WHAT REMAINS</p></section>
       <div id="scene-caption" class="scene-caption hidden"><span class="tiny-diamond"></span><div>THE FORGOTTEN GATE<small>AFTER THE RAIN, ONLY SILENCE.</small></div></div>
       <footer id="menu-footer" class="menu-footer hidden"><div><span class="keyboard-icon">⌨</span> DESIGNED FOR KEYBOARD &amp; MOUSE</div><button id="audio-toggle"><span id="audio-icon">♫</span> <span id="audio-label">SOUND ON</span></button><span class="version">CHAPTER I <i>/</i> THE HOLLOW KINGDOM</span></footer>
-      <section id="hud" class="hud hidden"><div class="player-status"><div class="portrait">${robotIcon}</div><div class="player-bars"><div class="player-label"><span>THE LAST MACHINE</span><span id="hp-number">100 <small>/ 100</small></span></div><div class="health-track"><div id="health-ghost"></div><div id="health-fill"></div></div><div class="stamina-track"><div id="stamina-fill"></div></div></div></div><div class="area-top"><span id="area-top-subtitle">CASTLE ENTRANCE</span><span id="area-top-name">The Forgotten Gate</span></div><div class="objective"><span>⟡</span><div><small id="objective-label">THE JOURNEY</small><p id="objective-text">Follow the light into the courtyard.</p></div></div><div class="control-strip"><div><kbd>W A S D</kbd><span>Move</span></div><div><kbd>SHIFT</kbd><span>Sprint</span></div><i></i><div><kbd>LMB</kbd><span>Strike</span></div><div id="block-control"><kbd>RMB</kbd><span>Block</span></div><div><kbd>SPACE</kbd><span>Evade</span></div></div><button id="journal-button" class="journal-control hidden">JOURNAL <kbd>J</kbd></button><span id="save-indicator" class="save-indicator"></span><button id="pause-button" class="pause-control"><span>PAUSE</span><kbd>ESC</kbd></button></section>
+      <section id="hud" class="hud hidden"><div class="player-status"><div class="portrait">${robotIcon}</div><div class="player-bars"><div class="player-label"><span>THE LAST MACHINE</span><span id="hp-number">100 <small>/ 100</small></span></div><div class="health-track"><div id="health-ghost"></div><div id="health-fill"></div></div><div class="stamina-track"><div id="stamina-fill"></div></div></div></div><div class="area-top"><span id="area-top-subtitle">CASTLE ENTRANCE</span><span id="area-top-name">The Forgotten Gate</span></div><div class="objective"><span>⟡</span><div><small id="objective-label">THE JOURNEY</small><p id="objective-text">Follow the light into the courtyard.</p></div></div><div class="control-strip"><div><kbd>W A S D</kbd><span>Move</span></div><div><kbd>SHIFT</kbd><span>Sprint</span></div><i></i><div><kbd>LMB</kbd><span>Strike</span></div><div id="block-control"><kbd>RMB</kbd><span>Block</span></div><div><kbd>SPACE</kbd><span>Evade</span></div></div><div id="ability-status" class="ability-status hidden"><kbd>Q</kbd><div><strong id="ability-name"></strong><span id="ability-detail"></span></div></div><button id="journal-button" class="journal-control hidden">JOURNAL <kbd>J</kbd></button><span id="save-indicator" class="save-indicator"></span><button id="pause-button" class="pause-control"><span>PAUSE</span><kbd>ESC</kbd></button></section>
       <div id="area-reveal" class="area-reveal hidden"><p class="eyebrow" id="area-reveal-subtitle"></p><h2 id="area-reveal-name"></h2><div class="title-rule"><i></i><b>✧</b><i></i></div></div>
       <div id="boss-ui" class="boss-ui hidden"><div class="boss-name"><i></i><span>THE HOODED REAPER</span><i></i></div><p>KEEPER OF THE HOLLOW THRONE</p><div class="boss-track"><div id="boss-ghost"></div><div id="boss-fill"></div></div><div id="boss-tell"></div></div>
       <div id="toast" class="toast hidden" role="status"></div><div id="memory" class="memory hidden"></div><div id="damage-flash"></div><div id="block-flash"></div>
@@ -53,10 +56,23 @@ export class HUD {
       <div id="interaction" class="interaction hidden"><kbd>E</kbd><span id="interaction-text"></span></div>
       <section id="story-dialogue" class="story-dialogue hidden" role="dialog" aria-modal="true" aria-labelledby="speaker-name" aria-describedby="dialogue-text"><div class="dialogue-ornament" aria-hidden="true">✧</div><div class="dialogue-heading"><div><p class="eyebrow" id="speaker-role">KEEPER OF FIRSTLIGHT</p><h2 id="speaker-name">Elder Rowan</h2></div><span id="dialogue-page"></span></div><p id="dialogue-text"></p><div class="dialogue-actions"><button id="dialogue-leave" class="text-button">LISTEN LATER <kbd>ESC</kbd></button><button id="dialogue-next" class="primary">CONTINUE <kbd>E</kbd></button></div></section>
       <section id="journal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="journal-title"><div class="modal journal-modal"><button id="journal-close" class="close-modal" aria-label="Close journal">×</button><p class="eyebrow">FIELD NOTES · WORLD PAUSED</p><h2 id="journal-title">A light to come home to</h2><p id="journal-status" class="journal-status"></p><p id="journal-objective"></p><div class="journal-parts"><div><span id="winding-state" class="journal-check"></span><div><h3>Copper winding</h3><p>Beside the abandoned cart on the pond’s eastern bank.</p></div></div><div><span id="sunwheel-state" class="journal-check"></span><div><h3>Sunwheel</h3><p>Beneath the ruined arch, west of Firstlight.</p></div></div></div><blockquote id="journal-memory"></blockquote><div id="journal-reward" class="journal-reward"></div><p id="journal-world" class="journal-world"></p><p id="journal-save" class="modal-footnote"></p><button id="journal-return" class="primary">BACK TO THE WORLD <kbd>J</kbd></button></div></section>
+      <section id="disciplines" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="disciplines-title"><div class="modal discipline-modal"><p class="eyebrow">FIRSTLIGHT WELL · WORLD PAUSED</p><h2 id="disciplines-title">What will you protect?</h2><p>The repaired capacitor can hold one discipline. Choose freely whenever you return to the well.</p><div class="discipline-choices">${(
+        Object.keys(DISCIPLINES) as Discipline[]
+      )
+        .map((id) => {
+          const d = DISCIPLINES[id];
+          return `<button id="choose-${id}" class="discipline-choice"><span class="discipline-name">${d.name}</span><span class="discipline-description">${d.description}</span><span class="discipline-cost"><kbd>Q</kbd> ${d.ability} · ${d.cost} energy · ${d.cooldown}s cooldown</span><span id="equipped-${id}" class="discipline-equipped"></span></button>`;
+        })
+        .join(
+          '',
+        )}</div><p class="modal-footnote">Sword, guard, and evade remain available. Switching preserves energy and the current cooldown.</p><button id="disciplines-close" class="text-button">RETURN TO THE VILLAGE <kbd>ESC</kbd></button></div></section>
       <section id="new-journey-confirm" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="new-journey-title"><div class="modal"><p class="eyebrow">BEGIN AGAIN</p><h2 id="new-journey-title">A new journey?</h2><p>This replaces the saved Greenfields journey, including the restored mill and recovered memories. Your settings stay the same.</p><div class="modal-buttons"><button id="keep-journey" class="primary">KEEP MY JOURNEY</button><button id="confirm-new-journey">START A NEW JOURNEY</button></div></div></section>
       <div id="debug" class="debug hidden"></div><div class="desktop-notice"><div class="modal-crest">${crest}</div><h2>A journey for a bigger window.</h2><p>This experience is designed for desktop browsers.<br>Please use a keyboard and mouse.</p></div>`;
     this.root.querySelectorAll<HTMLElement>('[id]').forEach((el) => (this.elements[el.id] = el));
     this.on('play', actions.play);
+    for (const id of Object.keys(DISCIPLINES) as Discipline[])
+      this.on(`choose-${id}`, () => actions.chooseDiscipline?.(id));
+    this.on('disciplines-close', () => actions.leaveDisciplines?.());
     for (const id of ['journal-button', 'journal-close', 'journal-return'])
       this.on(id, () => actions.journal?.());
     this.on('new-journey', () => this.show('new-journey-confirm'));
@@ -184,6 +200,7 @@ export class HUD {
       'credits',
       'story-dialogue',
       'journal',
+      'disciplines',
       'new-journey-confirm',
       'interaction',
     ])
@@ -199,6 +216,7 @@ export class HUD {
     if ([GameState.PLAYING, GameState.BOSS_COMBAT, GameState.BOSS_DEAD].includes(state))
       this.show('hud');
     if (state === GameState.DIALOGUE) this.show('story-dialogue');
+    if (state === GameState.DISCIPLINES) this.show('disciplines');
     if (state === GameState.JOURNAL) {
       this.show('journal');
       this.el('journal-return').focus();
@@ -214,7 +232,8 @@ export class HUD {
       state === GameState.INTRO ||
       state === GameState.TRANSITION ||
       state === GameState.DIALOGUE ||
-      state === GameState.JOURNAL
+      state === GameState.JOURNAL ||
+      state === GameState.DISCIPLINES
     ) {
       this.hide('memory');
       this.hide('toast');
@@ -368,11 +387,39 @@ export class HUD {
       ? FIRSTLIGHT_PARTS.sunwheel.memory
       : 'The old machines still hold the voices of those who cared for them.';
     this.el('journal-reward').textContent = quest.restored
-      ? 'INSTALLED · Firstlight Capacitor · Maximum energy 120 (+20)'
+      ? 'INSTALLED · Firstlight Capacitor · Maximum energy 120 (+20). Choose or switch disciplines at the well; Q uses the active ability.'
       : 'REWARD · Firstlight Capacitor · +20 maximum energy';
     this.el('journal-reward').classList.toggle('installed', quest.restored);
     this.el('journal-world').textContent =
       `${remaining} creatures remain beyond the sanctuary. Recovered parts and repairs survive defeat.`;
+  }
+  disciplines(selected: Discipline | null) {
+    for (const id of Object.keys(DISCIPLINES) as Discipline[]) {
+      this.el(`choose-${id}`).setAttribute('aria-pressed', String(id === selected));
+      this.el(`equipped-${id}`).textContent = id === selected ? 'EQUIPPED' : 'CHOOSE DISCIPLINE';
+    }
+    this.el(`choose-${selected ?? 'stormblade'}`).focus();
+  }
+  ability(
+    selected: Discipline | null,
+    cooldown: number,
+    energy: number,
+    charge: boolean,
+    unlocked: boolean,
+  ) {
+    this.el('ability-status').classList.toggle('hidden', !unlocked);
+    this.el('ability-name').textContent = selected
+      ? DISCIPLINES[selected].name
+      : 'Discipline available';
+    this.el('ability-detail').textContent = !selected
+      ? 'Choose at the village well'
+      : cooldown > 0
+        ? `${Math.ceil(cooldown)}s · recovering`
+        : energy < DISCIPLINES[selected].cost
+          ? `Needs ${DISCIPLINES[selected].cost} energy`
+          : selected === 'bulwark' && !charge
+            ? 'Time a guard to charge'
+            : `${DISCIPLINES[selected].ability} · ${DISCIPLINES[selected].cost} energy`;
   }
   objective(text: string, label = 'THE JOURNEY') {
     this.el('objective-text').textContent = text;

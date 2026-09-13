@@ -209,7 +209,12 @@ def reaper():
    leg.ellipsoid(knee,(.18,.2,.18),'iron',8,4)
    leg.object('reaper_leg_'+str((0 if side<0 else 4)+i),body,pivot=hip)
  weapon=Mesh();weapon.tube([(1.72,.58,.9),(1.67,3,.75),(1.43,5.4,.34),(1.29,7.0,.05)],[.087,.075,.085,.064],'wood',10)
- for y in [1.7,2.0,2.3,4.4,4.7,6.7]:weapon.tube([(1.67,y,.74),(1.66,y+.13,.72)],[.11,.11],'iron',9)
+ # Ferrules follow the curved shaft, including while the scythe rotates into contact.
+ shaft=[(1.72,.58,.9),(1.67,3,.75),(1.43,5.4,.34),(1.29,7.0,.05)]
+ def shaft_at(y):
+  a,b=next((a,b) for a,b in zip(shaft,shaft[1:]) if a[1]<=y<=b[1])
+  t=(y-a[1])/(b[1]-a[1]);return (a[0]+(b[0]-a[0])*t,y,a[2]+(b[2]-a[2])*t)
+ for y in [1.7,2.0,2.3,4.4,4.7,6.7]:weapon.tube([shaft_at(y),shaft_at(y+.13)],[.11,.11],'iron',9)
  # Forged crescent with a hooked tip and a visibly sharp cutting edge.
  outline=[(1.33,7.04),(.6,7.25),(-.55,7.18),(-1.77,6.78),(-2.74,6.1),(-3.31,5.22),(-3.51,4.52),(-2.76,5.32),(-1.85,5.91),(-.75,6.34),(.36,6.55),(1.31,6.58)]
  prism(weapon,outline,.13,'iron',.09)
@@ -309,6 +314,15 @@ def spire():
  asset('grave_spire',m)
 
 reaper();armor();spider();spire()
+# A solid, hooked projectile blade, authored around its flight centre.
+m=Mesh()
+outline=[(-.95,-.12),(-.62,.57),(-.08,.96),(.58,.81),(.96,.32),(.72,.41),(.28,.44),(-.18,.28),(-.54,-.15),(-.66,-.83)]
+prism(m,outline,.1,'steel')
+m.tube([(x,y,.065) for x,y in outline[:5]],[.035]*5,'bone',6)
+asset('widow_blade',m)
+sys.path.insert(0,str(Path(__file__).parent))
+from animate_reaper import author_reaper
+author_reaper(ASSETS['reaper'],Mesh,node,xyz,ROOT)
 # Eyes are separate emissive meshes; there are no runtime textures or extra lights.
 eyeMat=MAT.copy();eyeMat.name='Embers inside empty sockets';eyeNode=eyeMat.node_tree.nodes.get('Principled BSDF')
 eyeNode.inputs['Emission Color'].default_value=rgba('ff183e');eyeNode.inputs['Emission Strength'].default_value=2.8
@@ -327,13 +341,14 @@ bpy.ops.object.select_all(action='DESELECT')
 for root in ASSETS.values():
  root.select_set(True)
  for obj in root.children_recursive:obj.select_set(True)
-bpy.ops.export_scene.gltf(filepath=str(OUT/'castle-creatures.glb'),export_format='GLB',use_selection=True)
+bpy.ops.export_scene.gltf(filepath=str(OUT/'castle-creatures.glb'),export_format='GLB',use_selection=True,export_animation_mode='NLA_TRACKS',export_frame_range=False,export_optimize_animation_keep_anim_object=True)
 (ROOT/'art/blender/monsters-manifest.json').write_text(json.dumps(stats,indent=2))
 for i,root in enumerate(ASSETS.values()):root.location=(i*11,0,0)
 for screen in bpy.data.screens:
  for area in screen.areas:
   if area.type=='VIEW_3D':
    area.spaces.active.shading.color_type='VERTEX';area.spaces.active.region_3d.view_distance=32;area.spaces.active.region_3d.view_location=Vector((14,0,3))
+bpy.context.preferences.filepaths.save_version=0
 bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'art/blender/monsters-library.blend'),compress=True)
 for root in ASSETS.values():root.location=(0,0,0)
 bpy.context.view_layer.update()

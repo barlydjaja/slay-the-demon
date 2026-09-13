@@ -8,5 +8,5 @@ export async function loadCastleAssets() {
     data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
     '',
   );
-  return new CastleAssets(gltf.scene);
+  return new CastleAssets(gltf.scene, gltf.animations);
 }

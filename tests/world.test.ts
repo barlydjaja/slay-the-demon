@@ -99,7 +99,7 @@ test('Blender castle assets have complete meshes, ground-level floors and a clea
   const manifest = JSON.parse(
     await readFile(new URL('../art/blender/castle-manifest.json', import.meta.url), 'utf8'),
   );
-  assert.equal(Object.keys(manifest).length, 34);
+  assert.equal(Object.keys(manifest).length, 35);
   for (const name of Object.keys(manifest)) {
     let triangles = 0;
     assets.clone(name).traverse((object) => {
@@ -136,4 +136,42 @@ test('Blender castle assets have complete meshes, ground-level floors and a clea
     () => castle.update(2, 0.016, -110),
     'sanctuary crystal must retain its animation pivot',
   );
+});
+
+test('Blender threshold has depth, feathered rays and shadow-casting light behind moving ironwork', async () => {
+  const castle = new Castle(new CollisionSystem(), await loadCastleAssets());
+  const exit = castle.exit,
+    root = exit.group;
+  const vault = root.getObjectByName('threshold_vault')!;
+  root.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(vault);
+  assert.ok(
+    bounds.max.z - bounds.min.z > 8,
+    'a passage with depth replaces the luminous rectangle',
+  );
+  const rays: THREE.Mesh[] = [];
+  let lamp: THREE.SpotLight | undefined;
+  root.traverse((p) => {
+    if (p instanceof THREE.Mesh && p.name.startsWith('threshold_ray_')) rays.push(p);
+    if (p instanceof THREE.SpotLight) lamp = p;
+  });
+  assert.equal(rays.length, 7);
+  for (const ray of rays) {
+    const colors = ray.geometry.getAttribute('color');
+    assert.equal(colors.itemSize, 4);
+    const alpha = Array.from({ length: colors.count }, (_, i) => colors.getW(i));
+    assert.ok(Math.min(...alpha) < 0.001 && Math.max(...alpha) > 0.05 && Math.max(...alpha) < 0.12);
+    assert.equal(ray.castShadow, false);
+  }
+  assert.ok(lamp?.castShadow);
+  assert.equal(lamp!.intensity, 0);
+  exit.update(1, 1, true);
+  assert.equal(exit.ready, false);
+  exit.update(3.4, 4.4, true);
+  assert.equal(exit.ready, true);
+  assert.ok(root.getObjectByName('threshold_counterweight_1')!.position.y < -5);
+  assert.ok(lamp!.intensity > 250);
+  exit.reset();
+  assert.equal(exit.ready, false);
+  assert.equal(lamp!.intensity, 0);
 });

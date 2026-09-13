@@ -10,7 +10,13 @@ import {
 import { CollisionSystem, type Obstacle } from '../game/CollisionSystem';
 import { seededRandom } from '../game/math';
 import { FieldAssets, type Placement } from './FieldAssets';
-import { ELDER_POSITION, FIELD_BOUNDS, FIELD_ENCOUNTERS, VILLAGE } from './GreenfieldsConfig';
+import {
+  ELDER_POSITION,
+  FIELD_BOUNDS,
+  FIELD_ENCOUNTERS,
+  VILLAGE,
+  VILLAGE_WALLS,
+} from './GreenfieldsConfig';
 const PATH = [
   [35, 0],
   [23, 3],
@@ -195,10 +201,7 @@ export class Greenfields {
       this.put('lantern', x, -9);
       this.collision.add(x, -9, 0.25, 0.25);
     }
-    const fences: Placement[] = [];
-    for (let x = 4; x < 33; x += 3) fences.push({ x, z: -39 });
-    this.assets.scatter(this.group, 'fence', fences);
-    this.collision.add(18, -39, 31, 0.2);
+    this.fortifications();
     this.put('cart', 3, -17, 0.9, -0.4);
     this.collision.add(3, -17, 2.3, 2.3);
     for (const [x, z] of [
@@ -213,6 +216,34 @@ export class Greenfields {
     for (let row = 0; row < 3; row++)
       for (let j = 0; j < 5; j++) this.put('berry_bush', 3 + row * 0.8, -27 - j * 0.8, 0.48);
   }
+  private fortifications() {
+    const w = VILLAGE_WALLS;
+    const segment = (x: number, z: number, length: number, yaw = 0) => {
+      // Scaling only the length retains the authored wall height and foundation depth.
+      const root = this.put('village_wall', x, z, 1, yaw);
+      root.scale.x = length / 4;
+      this.collision.add(x, z, yaw ? 1.4 : length, yaw ? length : 1.4);
+    };
+    for (let z = -40; z <= -12; z += 4) {
+      segment(w.west, z, 4, Math.PI / 2);
+      segment(w.east, z, 4, Math.PI / 2);
+    }
+    for (let x = 2; x < 34; x += 4) segment(x, w.north, 4);
+    segment(33, w.north, 2);
+    // South wall ends meet the gate piers. The eight-metre opening follows the path.
+    segment(5, w.south, 10);
+    for (let x = 20; x <= 32; x += 4) segment(x, w.south, 4);
+    this.put('village_gate', w.gateX, w.south);
+    this.collision.add(10.25, -11.6, 0.45, 3.6);
+    this.collision.add(17.75, -11.6, 0.45, 3.6);
+    for (const x of [w.west, w.east])
+      for (const z of [w.north, w.south]) {
+        this.put('village_tower', x, z);
+        this.collision.add(x, z, 2.8, 2.8);
+      }
+    // Warm gate lanterns make the only entrance readable through the mist.
+    for (const x of [10, 18]) this.put('lantern', x, -8.8);
+  }
   private woodland() {
     const types = ['oak', 'birch', 'pine', 'golden_oak'];
     const lists = types.map(() => [] as Placement[]);
@@ -222,7 +253,7 @@ export class Greenfields {
       const z = -63 + this.rng() * 103;
       if (
         Math.abs(x - meadowPathX(z)) < 5 ||
-        Math.hypot(x - 16, z + 23) < 18 ||
+        (x > -3 && x < 37 && z > -45 && z < -7) ||
         Math.hypot(x + 26, z - 18) < 8 ||
         FIELD_ENCOUNTERS.some((e) => Math.hypot(x - e.x, z - e.z) < 4)
       )
@@ -298,10 +329,10 @@ export class Greenfields {
     this.motes = new THREE.Points(
       geometry,
       new THREE.PointsMaterial({
-        color: 0xffe9b0,
+        color: 0x9ebfc6,
         size: 0.06,
         transparent: true,
-        opacity: 0.6,
+        opacity: 0.3,
         depthWrite: false,
       }),
     );

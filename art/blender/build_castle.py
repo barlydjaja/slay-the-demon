@@ -389,6 +389,9 @@ def details():
  asset('floor_border',m)
 
 architecture();landmarks();details()
+sys.path.insert(0,str(Path(__file__).parent))
+from build_threshold import author_threshold
+author_threshold(asset,Mesh,archband,relief,xyz)
 bpy.context.view_layer.update()
 # Weld authoring seams and bevel the substantial props in Blender before export.
 import bmesh
@@ -411,7 +414,7 @@ bpy.ops.object.select_all(action='DESELECT')
 for root in ASSETS.values():
  root.select_set(True)
  for obj in root.children_recursive:obj.select_set(True)
-bpy.ops.export_scene.gltf(filepath=str(OUT/'castle-kit.glb'),export_format='GLB',use_selection=True,export_extras=True)
+bpy.ops.export_scene.gltf(filepath=str(OUT/'castle-kit.glb'),export_format='GLB',use_selection=True,export_extras=True,export_animation_mode='NLA_TRACKS',export_frame_range=False)
 (ROOT/'art/blender/castle-manifest.json').write_text(json.dumps(stats,indent=2))
 for i,(name,root) in enumerate(ASSETS.items()):
  root.location=(i%6*16,i//6*16,0)
@@ -420,6 +423,7 @@ for screen in bpy.data.screens:
  for area in screen.areas:
   if area.type=='VIEW_3D':
    area.spaces.active.shading.color_type='VERTEX';area.spaces.active.region_3d.view_distance=100;area.spaces.active.region_3d.view_location=Vector((40,40,0))
+bpy.context.preferences.filepaths.save_version=0
 bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'art/blender/castle-library.blend'),compress=True)
 for root in ASSETS.values():root.location=(0,0,0);root.scale=(1,1,1)
 bpy.context.view_layer.update()

@@ -1,14 +1,20 @@
 import * as THREE from 'three';
+import type { Discipline } from '../combat/Disciplines';
 import { PLAYER } from '../game/config';
 import { InputManager } from '../game/InputManager';
 import { CollisionSystem } from '../game/CollisionSystem';
 import { angleDamp, clamp } from '../game/math';
 import { Effects } from '../world/Effects';
 import { AudioManager } from '../audio/AudioManager';
+import { RobotAssets } from './RobotAssets';
 import { RobotModel } from './RobotModel';
 export class Player {
-  model = new RobotModel();
-  position = this.model.group.position;
+  model: RobotModel;
+  position: THREE.Vector3;
+  discipline: Discipline | null = null;
+  abilityCooldown = 0;
+  parryCharge = false;
+  private guardAge = Infinity;
   health = 100;
   stamina = 100;
   maxStamina = 100;
@@ -32,10 +38,14 @@ export class Player {
     private collision: CollisionSystem,
     private effects: Effects,
     private audio: AudioManager,
+    assets: RobotAssets,
   ) {
+    this.model = new RobotModel(assets.clone('robot'));
+    this.position = this.model.group.position;
     this.position.set(0, 0, 11);
   }
   update(dt: number, time: number, input: InputManager, aim: THREE.Vector3 | null) {
+    this.abilityCooldown = Math.max(0, this.abilityCooldown - dt);
     this.invulnerable = Math.max(0, this.invulnerable - dt);
     this.hitTimer = Math.max(0, this.hitTimer - dt);
     this.dodgeCooldown = Math.max(0, this.dodgeCooldown - dt);
@@ -53,8 +63,10 @@ export class Player {
         this.attackResolved = true;
       }
     }
+    const wasBlocking = this.blocking;
     this.blocking =
       input.block && this.attackTimer <= 0 && this.stamina > 4 && this.dodgeTimer <= 0;
+    this.guardAge = this.blocking ? (wasBlocking ? this.guardAge + dt : 0) : Infinity;
     const horizontal =
       Number(input.down('KeyD', 'ArrowRight')) - Number(input.down('KeyA', 'ArrowLeft'));
     const vertical =
@@ -140,6 +152,10 @@ export class Player {
     const angle = Math.atan2(fromX - this.position.x, fromZ - this.position.z);
     const front = Math.cos(angle - this.facing) > -0.15;
     if (this.blocking && front && this.stamina >= (heavy ? 24 : 12)) {
+      if (this.discipline === 'bulwark' && this.guardAge <= 0.22) {
+        this.parryCharge = true;
+        this.guardAge = Infinity;
+      }
       this.stamina -= heavy ? 24 : 12;
       this.invulnerable = 0.18;
       this.effects.burst(this.position.x, 0.95, this.position.z, 0xe4e8c6, 20, 4);
@@ -158,7 +174,15 @@ export class Player {
     this.collision.move(this.position, (dx / len) * 0.5, (dz / len) * 0.5, PLAYER.radius);
     return 'hurt';
   }
+  chooseDiscipline(discipline: Discipline) {
+    if (this.discipline === discipline) return;
+    this.discipline = discipline;
+    this.parryCharge = false;
+  }
   reset(z = 11, x = 0) {
+    this.abilityCooldown = 0;
+    this.parryCharge = false;
+    this.guardAge = Infinity;
     this.position.set(x, this.collision.heightAt(x, z), z);
     this.health = 100;
     this.stamina = this.maxStamina;

@@ -1,3 +1,5 @@
+import { loadMachineAssets } from './fixtures/machine-assets';
+const machine = await loadMachineAssets();
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -22,11 +24,13 @@ const effects = { burst() {}, splash() {}, ripple() {} } as unknown as Effects;
 const audio = { play() {}, setBoss() {} } as unknown as AudioManager;
 function encounter(kind: AttackKind = 'slash', phase = 1) {
   const collision = new CollisionSystem(),
-    player = new Player(collision, effects, audio);
+    player = new Player(collision, effects, audio, machine);
   const boss = new Boss(collision, effects, audio, assets);
   boss.phase = phase;
   boss.state = 'chase';
-  boss.attackIndex = Array.from({ length: 6 }, (_, i) => chooseBossAttack(i, 4.7)).indexOf(kind);
+  boss.attackIndex = Array.from({ length: 9 }, (_, i) => chooseBossAttack(i, 4.7, phase)).indexOf(
+    kind,
+  );
   player.position.set(0, 0, BOSS.spawnZ + 4.7);
   boss.update(0.001, 0, player);
   assert.equal(boss.state, 'prepare');
@@ -166,7 +170,7 @@ test('soul ring damages only the passing band and an evade can cross it safely',
 });
 
 test('ground marks freeze their target, wait for the warning, strike once and clear on retry', () => {
-  const player = new Player(new CollisionSystem(), effects, audio);
+  const player = new Player(new CollisionSystem(), effects, audio, machine);
   const hazards = new BossHazards(assets.clone('grave_spire'), effects, audio);
   player.position.set(0, 0, -130);
   hazards.spawn('shadow', 0, -130, 0.92, 1.5, 23);
@@ -224,4 +228,131 @@ test('phase transition fires once, clears hazards, and death cancels every pendi
   assert.equal(boss.phase, 1);
   assert.equal(boss.state, 'idle');
   assert.equal(boss.hazards.activeCount, 0);
+});
+
+test('Blender clips retain the transformed silhouette through every attack and reset on retry', () => {
+  const root = assets.clone('reaper'),
+    model = new ReaperModel(root);
+  assert.equal(root.animations.length, 24);
+  const mantle = root.getObjectByName('reaper_mantle_left')!;
+  const jaw = root.getObjectByName('reaper_jaw')!;
+  model.animateState('idle', 'slash', 1, 0, 0);
+  const closed = mantle.quaternion.clone();
+  model.animateState('phase', 'slash', 2, 0.01, 0);
+  const open = mantle.quaternion.clone();
+  assert.ok(open.angleTo(closed) > 0.9);
+  for (const kind of Object.keys(BOSS_ATTACKS) as AttackKind[]) {
+    const clip = root.animations.find((c) => c.name === `reaper_${kind}_2`)!;
+    assert.ok(clip);
+    assert.ok(
+      Math.abs(
+        clip.duration -
+          (BOSS_ATTACKS[kind].windup + attackDuration(kind, 2) + BOSS_ATTACKS[kind].recovery * 0.8),
+      ) < 0.015,
+      kind,
+    );
+    model.animateState('prepare', kind, 2, BOSS_ATTACKS[kind].windup * 0.5, 0);
+    assert.ok(mantle.quaternion.angleTo(open) < 0.02, `${kind} folds the phase-two mantle`);
+    assert.ok(jaw.rotation.x > 0.6, `${kind} closes the transformed jaw`);
+  }
+  model.reset();
+  assert.ok(mantle.quaternion.angleTo(closed) < 1e-6);
+});
+
+test('gallows fall locks a visible landing, stays harmless in flight, and hits exactly at touchdown', () => {
+  for (const sidestep of [false, true]) {
+    const { boss, player, tick } = encounter('dive');
+    const target = player.position.clone();
+    tick(BOSS_ATTACKS.dive.windup + 0.02);
+    assert.equal(player.health, 100);
+    const body = boss.model.group.getObjectByName('reaper_body')!;
+    tick(0.45);
+    assert.ok(body.position.y > 6, 'the Blender leap visibly leaves the floor');
+    if (sidestep) player.position.x = target.x + 5.4;
+    tick(0.48);
+    assert.equal(player.health, 100, 'airborne limbs cannot hit grounded players');
+    tick(0.13);
+    assert.ok(
+      boss.position.distanceTo(target) < 0.05,
+      'the landing does not track a late sidestep',
+    );
+    assert.equal(player.health, sidestep ? 100 : 66);
+    assert.ok(body.position.y < 0, 'contact compresses into the ground');
+  }
+});
+
+test('phase-two landing sends a ring across the outer floor while leaving its centre safe', () => {
+  const { boss, player, tick } = encounter('dive', 2);
+  tick(BOSS_ATTACKS.dive.windup + 0.02);
+  const z = player.position.z;
+  player.position.set(6.7, 0, z);
+  tick(1.07);
+  assert.equal(player.health, 100);
+  tick(0.7);
+  assert.equal(player.health, 66, 'outer band reaches the waiting player after landing');
+  player.invulnerable = 0;
+  player.position.copy(boss.position);
+  tick(0.25);
+  assert.equal(player.health, 66, 'the emptied interior cannot hit again');
+});
+
+test('widow return follows a distinct return path, respects dodge, and clears on death', () => {
+  const { boss, player, tick } = encounter('reave');
+  const path = boss.blades.paths[0];
+  assert.equal(path.points.length, 81);
+  assert.ok(path.points[20].x > 1.5 && path.points[60].x < -3.5);
+  assert.ok(path.points[0].distanceTo(path.points[80]) < 1e-6);
+  player.position.copy(path.points[60]);
+  tick(BOSS_ATTACKS.reave.windup + 0.02);
+  assert.equal(player.health, 100);
+  tick(1.3);
+  assert.equal(player.health, 100, 'the outbound blade is on the other side');
+  tick(1.15);
+  assert.equal(player.health, 74, 'return crescent crosses its painted return lane');
+  boss.state = 'dead';
+  tick(0.1);
+  assert.equal(boss.blades.activeCount, 0);
+});
+
+test('crossing blades are phase-two-only, stagger their releases, and leave gaps between lanes', () => {
+  for (let i = 0; i < 32; i++) assert.notEqual(chooseBossAttack(i, 4, 1), 'loom');
+  const { boss, player, tick } = encounter('loom', 2);
+  assert.deepEqual(
+    boss.blades.paths.map((p) => p.start),
+    [0.15, 0.65, 1.2, 1.7],
+  );
+  const centre = player.position.clone();
+  player.position.set(centre.x + 5, 0, centre.z);
+  tick(BOSS_ATTACKS.loom.windup + BOSS_ATTACKS.loom.duration + 0.03);
+  assert.equal(
+    player.health,
+    100,
+    'moving sideways out of the diagonal cross leaves a safe pocket',
+  );
+  assert.equal(boss.blades.activeCount, 0);
+  assert.equal(boss.state, 'recover');
+});
+
+test('the aerial leap clears intervening masonry and still lands on its committed marker', () => {
+  const { boss, player, collision, tick } = encounter('dive');
+  const target = player.position.clone();
+  collision.add(0, BOSS.spawnZ + 2.3, 2, 0.7);
+  tick(BOSS_ATTACKS.dive.windup + 1.07);
+  assert.ok(boss.position.distanceTo(target) < 0.05);
+  assert.equal(player.health, 66);
+});
+
+test('a swept blade cannot tunnel through a target on a slow frame; evasion prevents damage', () => {
+  for (const dodge of [false, true]) {
+    const { boss, player } = encounter('loom', 2);
+    const path = boss.blades.paths[0];
+    player.position.copy(path.points[16]);
+    if (dodge) player.invulnerable = 1;
+    boss.blades.update(0.1, 1.1, player, 25);
+    assert.equal(player.health, dodge ? 100 : 75);
+    player.invulnerable = 0;
+    boss.blades.reset();
+    boss.blades.update(0, 10, player, 25);
+    assert.equal(player.health, dodge ? 100 : 75);
+  }
 });

@@ -1,7 +1,9 @@
+import { validDiscipline, type Discipline } from '../combat/Disciplines';
 import { FIELD_ENCOUNTERS } from '../world/GreenfieldsConfig';
 import { validateFirstlight, type FirstlightState } from './FirstlightQuest';
 export const JOURNEY_SAVE_KEY = 'last-hope-journey-v1';
 export interface JourneySnapshot {
+  discipline?: Discipline | null;
   version: 1;
   chapter: 'fields';
   storyRead: boolean;
@@ -31,6 +33,9 @@ export function parseJourney(raw: string | null): JourneySnapshot | null {
           ] as string[])
         : [],
       firstlight: validateFirstlight(value.firstlight),
+      discipline: validateFirstlight(value.firstlight).restored
+        ? validDiscipline(value.discipline)
+        : null,
     };
   } catch {
     return null;
